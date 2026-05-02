@@ -8,6 +8,7 @@ import { TraceMindSettingTab } from './settings-tab';
 import { TraceMindSettings, DEFAULT_SETTINGS, ProviderConfig } from './settings';
 import { TraceMindView, VIEW_TYPE_TRACEMIND } from './views/tracemind-view';
 import { AIAnalysisPanelView, VIEW_TYPE_AI_ANALYSIS } from './views/ai-analysis-panel';
+import { CalendarView, VIEW_TYPE_CALENDAR } from './views/calendar-view';
 import { ensureFolder } from './vault';
 import { extractEntities } from './ai/entity-extractor';
 import { validateConfig, AiProviderConfig, ChatMessage } from './ai/provider-config';
@@ -40,6 +41,7 @@ export default class TraceMindPlugin extends Plugin {
       // Register views
       this.registerView(VIEW_TYPE_TRACEMIND, (leaf) => new TraceMindView(leaf, this));
       this.registerView(VIEW_TYPE_AI_ANALYSIS, (leaf) => new AIAnalysisPanelView(leaf));
+      this.registerView(VIEW_TYPE_CALENDAR, (leaf) => new CalendarView(leaf));
 
       // Register settings tab
       this.addSettingTab(new TraceMindSettingTab(this.app, this));
@@ -49,11 +51,21 @@ export default class TraceMindPlugin extends Plugin {
         this.openTracemindView();
       });
 
+      this.addRibbonIcon('calendar', '打开日历', () => {
+        this.openCalendarView();
+      });
+
       // Commands
       this.addCommand({
         id: 'open-tracemind',
         name: '打开 TraceMind 视图',
         callback: () => this.openTracemindView(),
+      });
+
+      this.addCommand({
+        id: 'open-calendar',
+        name: '打开日历',
+        callback: () => this.openCalendarView(),
       });
 
       this.addCommand({
@@ -91,6 +103,23 @@ export default class TraceMindPlugin extends Plugin {
       await ensureFolder(this.app, dir);
     }
     console.log('TraceMind: vault structure ensured');
+  }
+
+  /**
+   * Open Calendar View in right sidebar
+   */
+  async openCalendarView() {
+    const { workspace } = this.app;
+    const existing = workspace.getLeavesOfType(VIEW_TYPE_CALENDAR);
+    if (existing.length > 0) {
+      workspace.revealLeaf(existing[0]);
+    } else {
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (rightLeaf) {
+        await rightLeaf.setViewState({ type: VIEW_TYPE_CALENDAR, active: true });
+        workspace.revealLeaf(rightLeaf);
+      }
+    }
   }
 
   /**
