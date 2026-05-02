@@ -9,6 +9,8 @@ import { ContextCard, calculateMaturity, CardType } from '../core/context-card';
 import { cardToMarkdown, parseCardMarkdown } from '../storage/markdown-card';
 import { AnalysisService } from '../ai/analysis-service';
 import { listMarkdownFiles } from '../vault';
+import { ConfirmationFlow, PendingEntity } from '../core/confirmation-flow';
+import { buildCardUpdate, parseWikilinks, buildWikilinkSection } from '../storage/card-writer';
 
 export const VIEW_TYPE_TRACEMIND = 'tracemind-view';
 
@@ -204,26 +206,129 @@ export class TraceMindView extends ItemView {
       return;
     }
 
-    // Create context cards for new entities
-    for (const entity of result.newEntities) {
-      const card = ContextCard.create({
-        name: entity.name,
-        cardType: entity.type,
-        attributes: entity.subtype ? { subtype: entity.subtype } : {},
-      });
-      const md = cardToMarkdown(card);
-      const cardPath = `${this.getCardFolder(entity.type)}${entity.name}.md`;
-      const existing = this.plugin.app.vault.getFileByPath(cardPath);
-      if (!existing) {
-        await this.plugin.app.vault.create(cardPath, md);
+    // Separate entities: L0/L1 need confirmation, L2+ are silent update
+    const pendingEntities: PendingEntity[] = [];
+    const silentEntities = result.entities.filter(e => {
+      const maturity = e.maturity;
+      return maturity === 'L2' || maturity === 'L3';
+    });
+
+    for (const entity of result.entities) {
+      if (entity.maturity === 'L0' || entity.maturity === 'L1' || entity.isNew) {
+        pendingEntities.push({
+          name: entity.name,
+          type: entity.type,
+          isNew: entity.isNew,
+          maturity: entity.maturity,
+          clarificationQuestions: entity.clarificationQuestions,
+          priorityScore: entity.priorityScore,
+        });
       }
+    }
+
+    // Silently update L2+ entities
+    for (const entity of silentEntities) {
+      await this.updateExistingCard(entity);
+    }
+
+    // Create confirmation flow for L0/L1 entities
+    if (pendingEntities.length > 0) {
+      const flow = ConfirmationFlow.create(pendingEntities);
+      new Notice(`识别 ${result.entities.length} 个实体，${pendingEntities.length} 个待处理`);
+
+      // Process each entity in the flow
+      await this.processConfirmationFlow(flow, file, block);
+    } else {
+      new Notice(`检测到 ${result.entities.length} 个实体，${silentEntities.length} 个已更新`);
     }
 
     // Send results to AI analysis panel
     const summary = AnalysisService.summarizeResult(result);
     this.notifyAIAnalysisPanel(result);
+  }
 
-    new Notice(`检测到 ${result.entities.length} 个实体，新建 ${result.newEntities.length} 个卡片`);
+  /**
+   * Process a confirmation flow, prompting user for each entity
+   */
+  private async processConfirmationFlow(
+    flow: ConfirmationFlow,
+    file: TFile,
+    block: Block,
+  ): Promise<void> {
+    while (flow.hasMore) {
+      const entity = flow.currentEntity;
+      if (!entity) break;
+
+      // Ask user for confirmation
+      const confirmed = confirm(
+        `实体: ${entity.name}\n类型: ${entity.type}\n成熟度: ${entity.maturity}\n\n是否确认添加到知识库？\n(点击"取消"跳过)`,
+      );
+
+      if (confirmed) {
+        // Create card with any available attributes from first question answer
+        const card = ContextCard.create({
+          name: entity.name,
+          cardType: entity.type,
+          attributes: entity.type === 'object' && entity.maturity === 'L0'
+            ? { subtype: 'other' }
+            : {},
+        });
+        const md = buildCardUpdate(card);
+        const cardPath = `${this.getCardFolder(entity.type)}${entity.name}.md`;
+        const existing = this.plugin.app.vault.getFileByPath(cardPath);
+        if (!existing) {
+          await this.plugin.app.vault.create(cardPath, md);
+        }
+        flow.confirm({ attributes: card.attributes });
+
+        // Inject wikilinks back into the diary block
+        await this.injectWikilinks(block, file, [entity.name]);
+      } else {
+        flow.skip();
+      }
+    }
+
+    // Show summary
+    if (flow.confirmedCount > 0) {
+      new Notice(`已确认 ${flow.confirmedCount} 个实体，${flow.confirmedCount - flow.confirmedCount > 0 ? '' : ''}`);
+    }
+  }
+
+  /**
+   * Inject wikilinks into the diary block content
+   */
+  private async injectWikilinks(block: Block, file: TFile, entityNames: string[]): Promise<void> {
+    const content = await this.plugin.app.vault.read(file);
+    // Find the block in the content and append wikilinks
+    // For now, append wikilinks at the end of the block
+    const wikilinkSection = buildWikilinkSection(entityNames);
+    if (!wikilinkSection) return;
+
+    const wikilinkComment = `\n<!-- 关联实体: ${wikilinkSection} -->`;
+    const blockId = block.blockId;
+    if (blockId) {
+      const marker = `<!-- TM:${blockId} -->`;
+      const updated = content.replace(marker, wikilinkComment + '\n' + marker);
+      await this.plugin.app.vault.modify(file, updated);
+    }
+  }
+
+  /**
+   * Update an existing card with new information from this block
+   */
+  private async updateExistingCard(entity: { name: string; type: CardType; existingCardId?: string }): Promise<void> {
+    // For now, just ensure the card exists
+    // In future: append evidence entry IDs, update lastUpdated, etc.
+    const cardPath = `${this.getCardFolder(entity.type)}${entity.name}.md`;
+    const existing = this.plugin.app.vault.getFileByPath(cardPath);
+    if (!existing) {
+      const card = ContextCard.create({
+        name: entity.name,
+        cardType: entity.type,
+      });
+      const md = buildCardUpdate(card);
+      await this.plugin.app.vault.create(cardPath, md);
+    }
   }
 
   /**
