@@ -1,0 +1,33 @@
+{
+  "name": "tracemind-obsidian",
+  "version": "1.0.0",
+  "description": "TraceMind Obsidian Plugin - Entity-centric AI knowledge extraction from daily journals",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "ai",
+    "knowledge-management",
+    "context-cards"
+  ],
+  "author": "d19310",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.28.0",
+    "obsidian": "^1.12.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "zod": "^3.23.0"
+  }
+}

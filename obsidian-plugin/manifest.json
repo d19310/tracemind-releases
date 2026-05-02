@@ -1,0 +1,10 @@
+{
+  "id": "tracemind",
+  "name": "TraceMind",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Entity-centric AI knowledge extraction from daily journals",
+  "author": "d19310",
+  "authorUrl": "https://github.com/d19310",
+  "isDesktopOnly": false
+}
