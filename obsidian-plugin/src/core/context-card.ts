@@ -55,6 +55,40 @@ export const OBJECT_P0_ATTRIBUTES = ['subtype', 'status'];
 export const THEME_P0_ATTRIBUTES = ['subtype'];
 
 /**
+ * Valid Object subtypes with their priority levels
+ */
+export const OBJECT_SUBTYPE_PRIORITY: Record<string, 'P0' | 'P1' | 'P2'> = {
+  project: 'P0',
+  task: 'P0',
+  product: 'P1',
+  technology: 'P1',
+  document: 'P2',
+  location: 'P2',
+  other: 'P2',
+};
+
+export const VALID_OBJECT_SUBTYPES = Object.keys(OBJECT_SUBTYPE_PRIORITY);
+
+/**
+ * Valid Theme subtypes
+ */
+export const VALID_THEME_SUBTYPES = ['domain', 'habit', 'state', 'pending_decision'] as const;
+
+/**
+ * Default subtype for each card type
+ */
+const DEFAULT_SUBTYPES: Record<CardType, string | undefined> = {
+  person: undefined,
+  object: 'other',
+  theme: 'domain',
+};
+
+/**
+ * Priority weight values for scoring
+ */
+export const PRIORITY_WEIGHTS = { P0: 1.5, P1: 1.0, P2: 0.5 };
+
+/**
  * Attribute priority definitions by card type
  */
 export const ATTRIBUTE_PRIORITY: Record<CardType, { p0: string[]; p1: string[]; p2: string[] }> = {
@@ -84,6 +118,44 @@ export function calculateMaturity(cardType: CardType, attributes: Record<string,
   return 'L0';
 }
 
+/**
+ * Calculate priority score for a card
+ * Formula: score = priority_weight × frequency × (1 + log(relation_count))
+ *
+ * priority_weight accumulates by tier completion:
+ *   All P0 filled → +1.5
+ *   All P1 filled → +1.0
+ *   All P2 filled → +0.5
+ *   Partial P0 → (filled/total) × 1.5
+ */
+export function calculatePriorityScore(
+  cardType: CardType,
+  attributes: Record<string, unknown>,
+  relationCount: number,
+  frequency: number = 1,
+): number {
+  const priority = ATTRIBUTE_PRIORITY[cardType];
+  if (priority.p0.length + priority.p1.length + priority.p2.length === 0) return 0;
+
+  // Calculate tier weights: partial credit per tier
+  let priorityWeight = 0;
+
+  const p0Filled = priority.p0.filter(attr => attributes[attr] != null).length;
+  priorityWeight += (p0Filled / Math.max(priority.p0.length, 1)) * PRIORITY_WEIGHTS.P0;
+
+  if (priority.p1.length > 0) {
+    const p1Filled = priority.p1.filter(attr => attributes[attr] != null).length;
+    priorityWeight += (p1Filled / priority.p1.length) * PRIORITY_WEIGHTS.P1;
+  }
+
+  if (priority.p2.length > 0) {
+    const p2Filled = priority.p2.filter(attr => attributes[attr] != null).length;
+    priorityWeight += (p2Filled / priority.p2.length) * PRIORITY_WEIGHTS.P2;
+  }
+
+  return priorityWeight * frequency * (1 + Math.log1p(relationCount));
+}
+
 export const ContextCard = {
   create(input: ContextCardInput): ContextCard {
     const now = new Date().toISOString();
@@ -99,7 +171,7 @@ export const ContextCard = {
       relatedThemes: [],
       evidenceEntryIds: [],
       confidence: 0.5,
-      maturity: 'L0',
+      maturity: calculateMaturity(input.cardType, input.attributes || {}),
       status: 'needs_confirmation',
       lifecycle: 'candidate',
       importance: 0,
@@ -108,3 +180,24 @@ export const ContextCard = {
     };
   },
 };
+
+/**
+ * Validate an Object subtype is in the allowed set
+ */
+export function validateObjectSubtype(subtype: string): boolean {
+  return VALID_OBJECT_SUBTYPES.includes(subtype);
+}
+
+/**
+ * Validate a Theme subtype is in the allowed set
+ */
+export function validateThemeSubtype(subtype: string): boolean {
+  return (VALID_THEME_SUBTYPES as readonly string[]).includes(subtype);
+}
+
+/**
+ * Get the default subtype for a card type
+ */
+export function getDefaultSubtype(cardType: CardType): string | undefined {
+  return DEFAULT_SUBTYPES[cardType];
+}

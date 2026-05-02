@@ -5,12 +5,13 @@
  */
 
 import { extractEntities, ExtractedEntity } from './entity-extractor';
-import { ContextCard, calculateMaturity, CardType } from '../core/context-card';
+import { ContextCard, calculateMaturity, calculatePriorityScore, CardType } from '../core/context-card';
 
 export interface AnalyzedEntity extends ExtractedEntity {
   isNew: boolean;
   existingCardId?: string;
-  maturity?: string;
+  maturity: string;
+  priorityScore: number;
   clarificationQuestions: string[];
 }
 
@@ -92,20 +93,25 @@ export class AnalysisService {
 
     for (const entity of extracted) {
       const existing = findExistingEntity(entity, existingCards);
+      const attributes = entity.subtype ? { subtype: entity.subtype } : {};
+      const maturity = existing?.maturity ?? calculateMaturity(entity.type, attributes);
+      const priorityScore = calculatePriorityScore(entity.type, attributes, 0);
+
       const analyzedEntity: AnalyzedEntity = {
         ...entity,
         isNew: !existing,
         existingCardId: existing?.cardId,
-        maturity: existing?.maturity,
+        maturity,
+        priorityScore,
         clarificationQuestions: existing ? [] : generateQuestions(entity),
       };
       analyzed.push(analyzedEntity);
     }
 
-    // Sort by priority: new first, then by type priority
+    // Sort by priority: new first, then by priority score descending
     analyzed.sort((a, b) => {
       if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-      return TYPE_PRIORITY[a.type] - TYPE_PRIORITY[b.type];
+      return b.priorityScore - a.priorityScore;
     });
 
     return {

@@ -66,4 +66,41 @@ describe('Analysis Service - Priority Ordering', () => {
       }
     }
   });
+
+  it('includes priorityScore for each entity', () => {
+    const diary = '今天和张三讨论了Q2营销计划。';
+    const existingCards = new Map();
+
+    const result = AnalysisService.analyzeBlock(diary, existingCards);
+
+    for (const entity of result.entities) {
+      assert.ok(typeof entity.priorityScore === 'number');
+      assert.ok(entity.priorityScore >= 0);
+    }
+  });
+
+  it('sorts entities by priorityScore descending among new entities', () => {
+    const diary = '今天和张三讨论了Q2营销计划。';
+    const existingCards = new Map();
+
+    const result = AnalysisService.analyzeBlock(diary, existingCards);
+    const newEntities = result.newEntities;
+
+    for (let i = 1; i < newEntities.length; i++) {
+      // Earlier entities should have >= score than later ones
+      assert.ok(newEntities[i - 1].priorityScore >= newEntities[i].priorityScore);
+    }
+  });
+
+  it('includes maturity level for each entity', () => {
+    const diary = '今天和张三讨论了项目。';
+    const existingCards = new Map();
+
+    const result = AnalysisService.analyzeBlock(diary, existingCards);
+
+    for (const entity of result.entities) {
+      assert.ok(typeof entity.maturity === 'string');
+      assert.ok(['L0', 'L1', 'L2', 'L3'].includes(entity.maturity as string));
+    }
+  });
 });

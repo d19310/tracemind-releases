@@ -149,3 +149,58 @@ describe('Maturity - Theme', () => {
     assert.equal(maturity, 'L1');
   });
 });
+
+describe('Context Card - Create with Maturity', () => {
+  it('creates Person card with L1 maturity when P0 attributes are filled', () => {
+    const card = ContextCard.create({
+      name: '张三',
+      cardType: 'person',
+      attributes: {
+        company: 'XX科技',
+        role: '技术总监',
+        relationship_to_user: '同事',
+      },
+    });
+
+    assert.equal(card.maturity, 'L1');
+  });
+
+  it('creates Person card with L2 maturity when P0 + P1 are filled', () => {
+    const card = ContextCard.create({
+      name: '李四',
+      cardType: 'person',
+      attributes: {
+        company: 'YY公司',
+        role: '产品经理',
+        relationship_to_user: '朋友',
+        responsibility: '产品设计',
+        communicationStyle: '温和',
+      },
+    });
+
+    assert.equal(card.maturity, 'L2');
+  });
+
+  it('creates Object card with L1 maturity when P0 attributes are filled', () => {
+    const card = ContextCard.create({
+      name: 'Q2项目',
+      cardType: 'object',
+      attributes: {
+        subtype: 'project',
+        status: '进行中',
+      },
+    });
+
+    assert.equal(card.maturity, 'L1');
+  });
+
+  it('creates Theme card with L1 maturity when P0 attribute is filled', () => {
+    const card = ContextCard.create({
+      name: 'AI技术',
+      cardType: 'theme',
+      attributes: { subtype: 'domain' },
+    });
+
+    assert.equal(card.maturity, 'L1');
+  });
+});
