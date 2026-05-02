@@ -41,7 +41,11 @@ export default class TraceMindPlugin extends Plugin {
       // Register views
       this.registerView(VIEW_TYPE_TRACEMIND, (leaf) => new TraceMindView(leaf, this));
       this.registerView(VIEW_TYPE_AI_ANALYSIS, (leaf) => new AIAnalysisPanelView(leaf));
-      this.registerView(VIEW_TYPE_CALENDAR, (leaf) => new CalendarView(leaf));
+      this.registerView(VIEW_TYPE_CALENDAR, (leaf) => {
+        const calView = new CalendarView(leaf);
+        calView.setOnDateClick((date: Date) => this.navigateToDate(date));
+        return calView;
+      });
 
       // Register settings tab
       this.addSettingTab(new TraceMindSettingTab(this.app, this));
@@ -103,6 +107,26 @@ export default class TraceMindPlugin extends Plugin {
       await ensureFolder(this.app, dir);
     }
     console.log('TraceMind: vault structure ensured');
+  }
+
+  /**
+   * Navigate to a specific date's diary entry
+   */
+  async navigateToDate(date: Date) {
+    // Open TraceMind view if not open
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TRACEMIND);
+    if (leaves.length === 0) {
+      await this.openTracemindView();
+    }
+    // Get the TraceMindView and set the date
+    const traceMindLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TRACEMIND);
+    for (const leaf of traceMindLeaves) {
+      const view = leaf.view as { currentDate?: Date; loadCurrentDay?: () => Promise<void> };
+      if (view.currentDate !== undefined && typeof view.loadCurrentDay === 'function') {
+        view.currentDate = date;
+        await view.loadCurrentDay();
+      }
+    }
   }
 
   /**
