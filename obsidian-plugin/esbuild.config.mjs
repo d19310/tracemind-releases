@@ -2,7 +2,7 @@ import esbuild from 'esbuild';
 
 const production = process.argv[2] === 'production';
 
-esbuild.build({
+const config = {
   entryPoints: ['src/main.ts'],
   bundle: true,
   external: ['obsidian'],
@@ -12,12 +12,13 @@ esbuild.build({
   platform: 'browser',
   minify: production,
   sourcemap: production ? false : 'inline',
-  watch: production ? false : {
-    onRebuild(error) {
-      if (error) console.error('Build failed:', error);
-      else console.log('Build succeeded');
-    }
-  }
-}).then(result => {
-  if (!production) console.log('Watching for changes...');
-}).catch(() => process.exit(1));
+};
+
+if (production) {
+  esbuild.build(config).catch(() => process.exit(1));
+} else {
+  esbuild.context(config).then(ctx => {
+    ctx.watch();
+    console.log('Watching for changes...');
+  }).catch(() => process.exit(1));
+}

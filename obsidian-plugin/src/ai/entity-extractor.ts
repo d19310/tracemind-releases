@@ -29,8 +29,8 @@ export function extractEntities(
 
   for (const phrase of phrases) {
     // Extract person names: 2-3 chars after prefix, before a verb/stop word
-    const personRe = /(?:和|与|跟)([\u4e00-\u9fa5]{2,3})(?:了|讨论|开会|见面|吃饭|合作|一起|说|聊|谈|对|交流|沟通|协商|汇报|通知|告诉|说|给|在|$)/g;
-    for (const pm of personRe.exec ? [...phrase.matchAll(personRe)] : []) {
+    const personRe = /(?:和|与|跟)([\u4e00-\u9fa5]{2,3})(?:了|讨论|开会|见面|吃饭|合作|一起|说|聊|谈|对|交流|沟通|协商|汇报|通知|告诉|给|在|$)/g;
+    for (const pm of phrase.matchAll(personRe)) {
       const name = pm[1].trim();
       if (name.length >= 2 && name.length <= 3 && !seen.has(name)) {
         seen.add(name);
