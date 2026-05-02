@@ -4,6 +4,7 @@
  */
 
 import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { AnalysisService } from '../ai/analysis-service';
 
 export const VIEW_TYPE_AI_ANALYSIS = 'tracemind-ai-analysis';
 
@@ -75,6 +76,33 @@ export class AIAnalysisPanelView extends ItemView {
 
   async onClose() {
     // Nothing to clean up
+  }
+
+  /**
+   * Update the panel with new analysis results
+   */
+  updateAnalysis(result: ReturnType<typeof AnalysisService.analyzeBlock>) {
+    if (!this.messagesContainer) return;
+
+    // Clear welcome message
+    this.messagesContainer.empty();
+
+    // Add analysis result message
+    const summary = AnalysisService.summarizeResult(result);
+    this.addMessage('assistant', summary);
+
+    // Show new entities
+    if (result.newEntities.length > 0) {
+      this.addMessage('assistant', '新实体：\n' + result.newEntities.map(e => `• ${e.name} (${e.type})`).join('\n'));
+    }
+
+    // Show clarification questions for new entities
+    for (const entity of result.newEntities) {
+      if (entity.clarificationQuestions.length > 0) {
+        const questions = entity.clarificationQuestions.join('\n');
+        this.addMessage('assistant', `关于"${entity.name}"的问题：\n${questions}`);
+      }
+    }
   }
 
   /**

@@ -5,10 +5,10 @@
 import { ItemView, WorkspaceLeaf, setIcon, Notice, TFile } from 'obsidian';
 import type TraceMindPlugin from '../main';
 import { parseDiaryContent, formatDiaryContent, Block } from '../core/diary-parser';
-import { extractEntities } from '../ai/entity-extractor';
-import { ensureFolder, writeFile } from '../vault';
-import { ContextCard } from '../core/context-card';
-import { cardToMarkdown } from '../storage/markdown-card';
+import { ContextCard, calculateMaturity, CardType } from '../core/context-card';
+import { cardToMarkdown, parseCardMarkdown } from '../storage/markdown-card';
+import { AnalysisService } from '../ai/analysis-service';
+import { listMarkdownFiles } from '../vault';
 
 export const VIEW_TYPE_TRACEMIND = 'tracemind-view';
 
@@ -67,7 +67,10 @@ export class TraceMindView extends ItemView {
   private async loadCurrentDay() {
     const fileName = this.formatDateFileName(this.currentDate);
     const filePath = `${DIARY_FOLDER}/${fileName}.md`;
-    await ensureFolder(this.plugin.app, DIARY_FOLDER);
+    const folder = this.plugin.app.vault.getFolderByPath(DIARY_FOLDER);
+    if (!folder) {
+      await this.plugin.app.vault.createFolder(DIARY_FOLDER);
+    }
 
     let content = '';
     const file = this.plugin.app.vault.getFileByPath(filePath);
@@ -187,23 +190,22 @@ export class TraceMindView extends ItemView {
   }
 
   /**
-   * Analyze a single block for entities
+   * Analyze a single block for entities and create context cards
    */
   private async analyzeBlock(block: Block, file: TFile) {
-    const provider = this.plugin.settings.providers.find((p: { id: string }) => p.id === this.plugin.settings.defaultProviderId);
-    if (!provider) {
-      new Notice('请先配置 AI Provider');
-      return;
-    }
+    // Load existing cards from vault
+    const existingCards = await this.loadExistingCards();
 
-    const entities = extractEntities(block.content, new Map());
-    if (entities.length === 0) {
+    // Run analysis
+    const result = AnalysisService.analyzeBlock(block.content, existingCards);
+
+    if (result.entities.length === 0) {
       new Notice('未检测到实体');
       return;
     }
 
-    // Create context cards
-    for (const entity of entities) {
+    // Create context cards for new entities
+    for (const entity of result.newEntities) {
       const card = ContextCard.create({
         name: entity.name,
         cardType: entity.type,
@@ -217,7 +219,56 @@ export class TraceMindView extends ItemView {
       }
     }
 
-    new Notice(`检测到 ${entities.length} 个实体并创建卡片`);
+    // Send results to AI analysis panel
+    const summary = AnalysisService.summarizeResult(result);
+    this.notifyAIAnalysisPanel(result);
+
+    new Notice(`检测到 ${result.entities.length} 个实体，新建 ${result.newEntities.length} 个卡片`);
+  }
+
+  /**
+   * Load existing context cards from vault directories
+   */
+  private async loadExistingCards(): Promise<Map<string, { name: string; cardType: CardType; maturity: string }>> {
+    const cards = new Map<string, { name: string; cardType: CardType; maturity: string }>();
+    const types: Array<{ type: CardType; folder: string }> = [
+      { type: 'person', folder: 'Person' },
+      { type: 'object', folder: 'Object' },
+      { type: 'theme', folder: 'Theme' },
+    ];
+
+    for (const { type, folder } of types) {
+      try {
+        const files = await listMarkdownFiles(this.plugin.app, folder);
+        for (const file of files) {
+          const content = await this.plugin.app.vault.read(file);
+          try {
+            const card = parseCardMarkdown(content);
+            cards.set(card.id, { name: card.name, cardType: card.cardType, maturity: card.maturity });
+          } catch {
+            // Skip files that fail to parse
+          }
+        }
+      } catch {
+        // Folder doesn't exist yet, skip
+      }
+    }
+
+    return cards;
+  }
+
+  /**
+   * Notify the AI analysis panel with analysis results
+   */
+  private notifyAIAnalysisPanel(result: ReturnType<typeof AnalysisService.analyzeBlock>) {
+    // Get AI analysis panel view instance
+    const leaves = this.plugin.app.workspace.getLeavesOfType('tracemind-ai-analysis');
+    for (const leaf of leaves) {
+      const view = leaf.view as { updateAnalysis?: (result: ReturnType<typeof AnalysisService.analyzeBlock>) => void };
+      if (view.updateAnalysis) {
+        view.updateAnalysis(result);
+      }
+    }
   }
 
   private getCardFolder(type: string): string {
