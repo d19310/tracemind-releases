@@ -1,38 +1,24 @@
-import { App, Modal, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting, SettingTab } from 'obsidian';
 import type TraceMindPlugin from './main';
 import { chat } from './ai/provider-config';
-import type { TraceMindSettings } from './settings-types';
 
-export class TraceMindSettingsModal extends Modal {
+export class TraceMindSettingTab extends SettingTab {
 	plugin: TraceMindPlugin;
 
 	constructor(app: App, plugin: TraceMindPlugin) {
-		super(app);
+		super(app, plugin);
 		this.plugin = plugin;
-		this.titleEl.setText('TraceMind 设置');
 	}
 
-	onOpen(): void {
-		this.display();
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-	}
-
-	private display(): void {
-		const { contentEl } = this;
-		contentEl.empty();
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+		containerEl.createEl('h2', { text: 'TraceMind 设置' });
 
 		// ============================================================
 		// AI Provider 管理
 		// ============================================================
-		contentEl.createEl('h3', { text: 'AI Provider 管理' });
-
-		// Add provider form
-		const formContainer = contentEl.createEl('div', {
-			cls: 'lifewiki-provider-form'
-		});
+		containerEl.createEl('h3', { text: 'AI Provider' });
 
 		let providerName = '';
 		let providerModel = '';
@@ -41,7 +27,7 @@ export class TraceMindSettingsModal extends Modal {
 		let providerEnableThinking = false;
 		let providerReasoningEffort: '' | 'high' | 'max' = '';
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.setName('名称')
 			.setDesc('Provider 显示名称')
 			.addText(text => {
@@ -49,7 +35,7 @@ export class TraceMindSettingsModal extends Modal {
 					.onChange(value => { providerName = value; });
 			});
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.setName('模型')
 			.setDesc('模型名称，如 gpt-4、qwen-plus')
 			.addText(text => {
@@ -57,15 +43,15 @@ export class TraceMindSettingsModal extends Modal {
 					.onChange(value => { providerModel = value; });
 			});
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.setName('Base URL')
-			.setDesc('OpenAI 兼容 API 地址，如 https://api.openai.com/v1、https://api.minimaxi.com/v1')
+			.setDesc('OpenAI 兼容 API 地址')
 			.addText(text => {
 				text.setPlaceholder('https://api.openai.com/v1')
 					.onChange(value => { providerBaseUrl = value; });
 			});
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.setName('API Key')
 			.setDesc('API 密钥')
 			.addText(text => {
@@ -74,17 +60,17 @@ export class TraceMindSettingsModal extends Modal {
 				text.inputEl.type = 'password';
 			});
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.setName('思考模式')
-			.setDesc('默认关闭。开启后请求体会带上 {"thinking":{"type":"enabled"}}。')
+			.setDesc('开启后请求体带上 {"thinking":{"type":"enabled"}}')
 			.addToggle(toggle => {
 				toggle.setValue(providerEnableThinking)
 					.onChange(value => { providerEnableThinking = value; });
 			});
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.setName('Reasoning Effort')
-			.setDesc('部分 OpenAI 兼容模型支持 high 或 max。')
+			.setDesc('部分模型支持 high 或 max')
 			.addDropdown(dropdown => {
 				dropdown
 					.addOption('', '默认')
@@ -96,7 +82,7 @@ export class TraceMindSettingsModal extends Modal {
 					});
 			});
 
-		new Setting(formContainer)
+		new Setting(containerEl)
 			.addButton(btn => {
 				btn.setButtonText('添加 Provider');
 				btn.setCta();
@@ -121,11 +107,10 @@ export class TraceMindSettingsModal extends Modal {
 				});
 			});
 
-		// Existing providers list
 		for (let i = 0; i < this.plugin.settings.providers.length; i++) {
 			const provider = this.plugin.settings.providers[i];
 			const isDefault = this.plugin.settings.defaultProviderId === provider.id;
-			const providerSetting = new Setting(contentEl)
+			const providerSetting = new Setting(containerEl)
 				.setName(`${provider.name}${isDefault ? ' (默认)' : ''}`)
 				.setDesc(`${provider.baseUrl} / ${provider.model}${provider.enableThinking ? ' / thinking:on' : ''}${provider.reasoningEffort ? ` / reasoning:${provider.reasoningEffort}` : ''}`);
 
@@ -189,7 +174,6 @@ export class TraceMindSettingsModal extends Modal {
 					if (this.plugin.settings.defaultProviderId === provider.id) {
 						this.plugin.settings.defaultProviderId = this.plugin.settings.providers[0]?.id || '';
 					}
-					// Clear mapping references
 					const mapping = this.plugin.settings.agentProviderMapping;
 					if (mapping.analysis === provider.id) mapping.analysis = '';
 					if (mapping.chat === provider.id) mapping.chat = '';
@@ -200,16 +184,16 @@ export class TraceMindSettingsModal extends Modal {
 		}
 
 		if (this.plugin.settings.providers.length === 0) {
-			contentEl.createEl('p', {
+			containerEl.createEl('p', {
 				text: '暂无 Provider，请添加一个',
 				cls: 'lifewiki-no-providers'
 			});
 		}
 
 		// ============================================================
-		// Agent 配置 - 为不同场景选择 Provider
+		// Agent 配置
 		// ============================================================
-		contentEl.createEl('h3', { text: 'Agent 配置' });
+		containerEl.createEl('h3', { text: 'Agent 配置' });
 
 		const mapping = this.plugin.settings.agentProviderMapping;
 		const providerOptions: Record<string, string> = {};
@@ -217,7 +201,7 @@ export class TraceMindSettingsModal extends Modal {
 			providerOptions[p.id] = p.name;
 		}
 
-		new Setting(contentEl)
+		new Setting(containerEl)
 			.setName('AI 分析')
 			.setDesc('日记分析使用的 AI Provider')
 			.addDropdown(dropdown => {
@@ -232,7 +216,7 @@ export class TraceMindSettingsModal extends Modal {
 					});
 			});
 
-		new Setting(contentEl)
+		new Setting(containerEl)
 			.setName('AI 聊天')
 			.setDesc('聊天使用的 AI Provider')
 			.addDropdown(dropdown => {
