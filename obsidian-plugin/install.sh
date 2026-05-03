@@ -16,9 +16,8 @@ PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
 VERSION="v1.0.0"
 GITHUB_REPO="d19310/tracemind-releases"
-DEFAULT_VAULT_NAME="TraceMind"
+VAULT_NAME="TraceMind"
 VAULT_PARENT_DIR="$HOME/Documents"
-VAULT_NAME="$DEFAULT_VAULT_NAME"
 VAULT_PATH=""
 OPEN_AFTER_INSTALL=true
 
@@ -26,32 +25,6 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_step() { echo -e "${BLUE}==>${NC} $1"; }
-
-usage() {
-	cat <<EOF
-TraceMind v1.0.0 安装脚本
-
-用法:
-  ./install.sh [选项]
-
-选项:
-  -n, --name <名称>       Vault 名称，默认: ${DEFAULT_VAULT_NAME}
-  -p, --parent <路径>     Vault 父目录，默认: ${VAULT_PARENT_DIR}
-  -v, --vault <路径>      直接指定 Vault 完整路径
-  -t, --tag <tag>         Release tag，默认: ${VERSION}
-  --no-open               安装完成后不自动打开 Obsidian
-  -h, --help              显示帮助
-
-示例:
-  ./install.sh
-  ./install.sh -n "MyTraceMind"
-  ./install.sh -v "\$HOME/Obsidian/TraceMind"
-
-说明:
-  从 GitHub Release 下载预构建文件安装。
-  插件安装目录为 .obsidian/plugins/${PLUGIN_ID}。
-EOF
-}
 
 expand_path() {
 	local input="$1"
@@ -64,46 +37,6 @@ expand_path() {
 	mkdir -p "$dir"
 	echo "$(cd "$dir" && pwd)/$(basename "$input")"
 }
-
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-		-n|--name)
-			VAULT_NAME="$2"
-			shift 2
-			;;
-		-p|--parent)
-			VAULT_PARENT_DIR="${2/#\~/$HOME}"
-			shift 2
-			;;
-		-v|--vault)
-			VAULT_PATH="$(expand_path "$2")"
-			shift 2
-			;;
-		-t|--tag)
-			VERSION="$2"
-			shift 2
-			;;
-		--no-open)
-			OPEN_AFTER_INSTALL=false
-			shift
-			;;
-		-h|--help)
-			usage
-			exit 0
-			;;
-		*)
-			log_error "未知参数: $1"
-			usage
-			exit 1
-			;;
-	esac
-done
-
-if [[ -z "$VAULT_PATH" ]]; then
-	VAULT_PATH="$(expand_path "${VAULT_PARENT_DIR}/${VAULT_NAME}")"
-fi
-
-PLUGIN_DIR="${VAULT_PATH}/.obsidian/plugins/${PLUGIN_ID}"
 
 check_system() {
 	log_step "检查环境"
@@ -118,6 +51,26 @@ check_system() {
 	fi
 
 	log_info "环境检查完成"
+}
+
+prompt_vault_config() {
+	echo ""
+	echo "请配置 Vault 路径："
+	echo ""
+
+	read -r -p "Vault 名称 (默认: ${VAULT_NAME}): " input_name
+	if [[ -n "$input_name" ]]; then
+		VAULT_NAME="$input_name"
+	fi
+
+	read -r -p "安装目录 (默认: ${VAULT_PARENT_DIR}): " input_parent
+	if [[ -n "$input_parent" ]]; then
+		input_parent="${input_parent/#\~/$HOME}"
+		VAULT_PARENT_DIR="$input_parent"
+	fi
+
+	VAULT_PATH="$(expand_path "${VAULT_PARENT_DIR}/${VAULT_NAME}")"
+	echo ""
 }
 
 confirm_install() {
@@ -230,6 +183,10 @@ main() {
 	echo "========================================"
 
 	check_system
+	prompt_vault_config
+
+	PLUGIN_DIR="${VAULT_PATH}/.obsidian/plugins/${PLUGIN_ID}"
+
 	confirm_install
 	create_vault_structure
 	install_plugin_from_release
