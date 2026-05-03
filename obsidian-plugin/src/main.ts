@@ -267,7 +267,7 @@ export class TraceMindPlugin extends Plugin {
     if (existing.length > 0) {
       workspace.revealLeaf(existing[0]);
     } else {
-      const leaf = workspace.getLeftLeaf(false);
+      const leaf = workspace.getLeaf(false);
       if (leaf) {
         await leaf.setViewState({ type: VIEW_TYPE_BLOCK_EDITOR, active: true });
         workspace.revealLeaf(leaf);
