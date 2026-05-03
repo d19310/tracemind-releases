@@ -10,41 +10,9 @@ chmod +x install.sh
 ./install.sh
 ```
 
-运行后脚本会引导你输入：
-- **Vault 名称**（默认 `TraceMind`）
-- **安装目录**（默认 `~/Documents`）
-
-最终 Vault 路径 = 安装目录 + Vault 名称
-
-## 命令行参数
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-n, --name` | Vault 名称 | `TraceMind` |
-| `-p, --parent` | Vault 父目录 | `~/Documents` |
-| `-v, --vault` | 直接指定完整路径 | - |
-| `-t, --tag` | Release 版本 | `v1.0.0` |
-| `--no-open` | 安装后不自动打开 Obsidian | - |
-| `-h, --help` | 显示帮助 | - |
-
-### 示例
-
-```bash
-# 一键安装，使用默认路径
-./install.sh
-
-# 自定义 Vault 名称
-./install.sh -n MyTraceMind
-
-# 指定安装目录
-./install.sh -p ~/Obsidian
-
-# 完全自定义路径
-./install.sh -v ~/MyPath/MyVault
-
-# 不自动打开 Obsidian
-./install.sh --no-open
-```
+运行后会依次提示：
+1. **Vault 名称**（默认 `TraceMind`）
+2. **安装目录**（默认 `~/Documents`）
 
 ## 安装后
 
