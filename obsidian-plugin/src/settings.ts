@@ -1,29 +1,38 @@
-import { App, Notice, Setting, SettingTab } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
 import type TraceMindPlugin from './main';
 import { chat } from './ai/provider-config';
-export { ProviderConfig, TraceMindSettings, DEFAULT_SETTINGS } from './settings-types';
+import type { TraceMindSettings } from './settings-types';
 
-export class TraceMindSettingTab extends SettingTab {
+export class TraceMindSettingsModal extends Modal {
 	plugin: TraceMindPlugin;
-	id: string = 'tracemind';
-	name: string = 'TraceMind';
-	icon: string = 'brain';
 
 	constructor(app: App, plugin: TraceMindPlugin) {
-		// @ts-expect-error - obsidian.d.ts doesn't type the constructor, but runtime expects (app, plugin)
-		super(app, plugin);
+		super(app);
 		this.plugin = plugin;
+		this.titleEl.setText('TraceMind 设置');
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-		containerEl.createEl('h2', { text: 'TraceMind 设置' });
+	onOpen(): void {
+		this.display();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	private display(): void {
+		const { contentEl } = this;
+		contentEl.empty();
 
 		// ============================================================
-		// Section 1: AI Provider 配置
+		// AI Provider 管理
 		// ============================================================
-		containerEl.createEl('h2', { text: 'AI Provider 配置' });
+		contentEl.createEl('h3', { text: 'AI Provider 管理' });
+
+		// Add provider form
+		const formContainer = contentEl.createEl('div', {
+			cls: 'lifewiki-provider-form'
+		});
 
 		let providerName = '';
 		let providerModel = '';
@@ -31,10 +40,6 @@ export class TraceMindSettingTab extends SettingTab {
 		let providerApiKey = '';
 		let providerEnableThinking = false;
 		let providerReasoningEffort: '' | 'high' | 'max' = '';
-
-		const formContainer = containerEl.createEl('div', {
-			cls: 'lifewiki-provider-form'
-		});
 
 		new Setting(formContainer)
 			.setName('名称')
@@ -54,7 +59,7 @@ export class TraceMindSettingTab extends SettingTab {
 
 		new Setting(formContainer)
 			.setName('Base URL')
-			.setDesc('OpenAI 兼容 API 地址，如 https://api.openai.com/v1、https://api.deepseek.com/v1')
+			.setDesc('OpenAI 兼容 API 地址，如 https://api.openai.com/v1、https://api.minimaxi.com/v1')
 			.addText(text => {
 				text.setPlaceholder('https://api.openai.com/v1')
 					.onChange(value => { providerBaseUrl = value; });
@@ -79,7 +84,7 @@ export class TraceMindSettingTab extends SettingTab {
 
 		new Setting(formContainer)
 			.setName('Reasoning Effort')
-			.setDesc('默认不发送。部分 OpenAI 兼容模型支持 high 或 max。')
+			.setDesc('部分 OpenAI 兼容模型支持 high 或 max。')
 			.addDropdown(dropdown => {
 				dropdown
 					.addOption('', '默认')
@@ -93,7 +98,7 @@ export class TraceMindSettingTab extends SettingTab {
 
 		new Setting(formContainer)
 			.addButton(btn => {
-				btn.setButtonText('保存 Provider');
+				btn.setButtonText('添加 Provider');
 				btn.setCta();
 				btn.onClick(async () => {
 					if (!providerName || !providerModel || !providerBaseUrl) {
@@ -110,19 +115,17 @@ export class TraceMindSettingTab extends SettingTab {
 						enableThinking: providerEnableThinking,
 						reasoningEffort: providerReasoningEffort,
 					});
-					if (!this.plugin.settings.defaultProviderId) {
-						this.plugin.settings.defaultProviderId = id;
-					}
 					await this.plugin.saveSettings();
 					this.display();
-					new Notice('Provider 已保存');
+					new Notice('Provider 已添加');
 				});
 			});
 
+		// Existing providers list
 		for (let i = 0; i < this.plugin.settings.providers.length; i++) {
 			const provider = this.plugin.settings.providers[i];
 			const isDefault = this.plugin.settings.defaultProviderId === provider.id;
-			const providerSetting = new Setting(containerEl)
+			const providerSetting = new Setting(contentEl)
 				.setName(`${provider.name}${isDefault ? ' (默认)' : ''}`)
 				.setDesc(`${provider.baseUrl} / ${provider.model}${provider.enableThinking ? ' / thinking:on' : ''}${provider.reasoningEffort ? ` / reasoning:${provider.reasoningEffort}` : ''}`);
 
@@ -186,6 +189,10 @@ export class TraceMindSettingTab extends SettingTab {
 					if (this.plugin.settings.defaultProviderId === provider.id) {
 						this.plugin.settings.defaultProviderId = this.plugin.settings.providers[0]?.id || '';
 					}
+					// Clear mapping references
+					const mapping = this.plugin.settings.agentProviderMapping;
+					if (mapping.analysis === provider.id) mapping.analysis = '';
+					if (mapping.chat === provider.id) mapping.chat = '';
 					await this.plugin.saveSettings();
 					this.display();
 				});
@@ -193,10 +200,53 @@ export class TraceMindSettingTab extends SettingTab {
 		}
 
 		if (this.plugin.settings.providers.length === 0) {
-			containerEl.createEl('p', {
+			contentEl.createEl('p', {
 				text: '暂无 Provider，请添加一个',
 				cls: 'lifewiki-no-providers'
 			});
 		}
+
+		// ============================================================
+		// Agent 配置 - 为不同场景选择 Provider
+		// ============================================================
+		contentEl.createEl('h3', { text: 'Agent 配置' });
+
+		const mapping = this.plugin.settings.agentProviderMapping;
+		const providerOptions: Record<string, string> = {};
+		for (const p of this.plugin.settings.providers) {
+			providerOptions[p.id] = p.name;
+		}
+
+		new Setting(contentEl)
+			.setName('AI 分析')
+			.setDesc('日记分析使用的 AI Provider')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', '使用默认 Provider');
+				for (const [id, name] of Object.entries(providerOptions)) {
+					dropdown.addOption(id, name);
+				}
+				dropdown.setValue(mapping.analysis)
+					.onChange(async (value) => {
+						this.plugin.settings.agentProviderMapping.analysis = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(contentEl)
+			.setName('AI 聊天')
+			.setDesc('聊天使用的 AI Provider')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', '使用默认 Provider');
+				for (const [id, name] of Object.entries(providerOptions)) {
+					dropdown.addOption(id, name);
+				}
+				dropdown.setValue(mapping.chat)
+					.onChange(async (value) => {
+						this.plugin.settings.agentProviderMapping.chat = value;
+						await this.plugin.saveSettings();
+					});
+			});
 	}
 }
+
+export { chat } from './ai/provider-config';

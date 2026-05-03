@@ -1929,7 +1929,7 @@ export class AIAnalysisPanelView extends ItemView {
 				content: `当前日记：${blockContent || '无'}`
 			},
 			...(messages.length > 0 ? messages.slice(-8) : [{ role: 'user' as const, content }])
-		]);
+		], 'analysis');
 
 		return {
 			aiResponse: this.stripThinking(response.content)
@@ -1967,7 +1967,7 @@ export class AIAnalysisPanelView extends ItemView {
 				role: 'system',
 				content: '你是一个友好的AI助手，可以和用户讨论各种话题，包括日记复盘、思考总结等。'
 			};
-			const response = await aiProvider.chat([systemMessage, ...messages]);
+			const response = await aiProvider.chat([systemMessage, ...messages], 'chat');
 
 			this.hideThinkingIndicator();
 

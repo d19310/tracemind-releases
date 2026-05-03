@@ -16,9 +16,17 @@ export interface ProviderConfig {
 export interface TraceMindSettings {
   providers: ProviderConfig[];
   defaultProviderId: string;
+  agentProviderMapping: {
+    analysis: string;
+    chat: string;
+  };
 }
 
 export const DEFAULT_SETTINGS: TraceMindSettings = {
   providers: [],
   defaultProviderId: '',
+  agentProviderMapping: {
+    analysis: '',
+    chat: '',
+  },
 };

@@ -5,8 +5,8 @@
  */
 
 import { App, Notice, Plugin } from 'obsidian';
-import { TraceMindSettingTab } from './settings';
-import { TraceMindSettings, DEFAULT_SETTINGS, ProviderConfig } from './settings';
+import { TraceMindSettingsModal } from './settings';
+import { TraceMindSettings, DEFAULT_SETTINGS, ProviderConfig } from './settings-types';
 import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './views/block-editor';
 import { AIAnalysisPanelView, VIEW_TYPE_AI_ANALYSIS } from './views/ai-analysis-panel';
 import { CalendarView, VIEW_TYPE_CALENDAR } from './views/calendar-view';
@@ -87,8 +87,12 @@ export class TraceMindPlugin extends Plugin {
         return this.calendarView;
       });
 
-      // Register settings tab
-      this.addSettingTab(new TraceMindSettingTab(this.app, this));
+      // Register settings modal (options button in community plugins list)
+      this.addOptions((options) => {
+        options.addOption('settings', 'TraceMind 设置', () => {
+          new TraceMindSettingsModal(this.app, this).open();
+        });
+      });
 
       // Ribbon icons
       this.addRibbonIcon('brain', '打开 TraceMind', () => {
@@ -781,7 +785,7 @@ class AIProviderAdapter {
   constructor(private plugin: TraceMindPlugin) {}
 
   /**
-   * Check if a default provider is configured with API key.
+   * Check if any provider is configured.
    */
   isReady(): boolean {
     const { settings } = this.plugin;
@@ -791,10 +795,11 @@ class AIProviderAdapter {
   }
 
   /**
-   * Send chat messages to the default provider.
+   * Send chat messages to the provider configured for the given context.
+   * context: 'analysis' for diary analysis, 'chat' for free-form chat
    */
-  async chat(messages: ChatMessage[]): Promise<{ content: string; usage: any }> {
-    const provider = this.getDefaultProvider();
+  async chat(messages: ChatMessage[], context?: 'analysis' | 'chat'): Promise<{ content: string; usage: any }> {
+    const provider = this.getProviderForContext(context ?? 'chat');
     if (!provider) {
       throw new Error('No AI provider configured');
     }
@@ -803,7 +808,7 @@ class AIProviderAdapter {
     const result = await sendChat(
       messages.map(m => ({ role: m.role, content: m.content })),
       {
-        provider: 'openai', // default to OpenAI-compatible format
+        provider: 'openai',
         apiKey: provider.apiKey,
         model: provider.model,
         baseUrl: provider.baseUrl,
@@ -817,9 +822,23 @@ class AIProviderAdapter {
    * Falls back to the local extractor (no LLM call needed for v1).
    */
   async analyzeBlock(content: string): Promise<any> {
-    // Use the rules-based analyzer (no LLM needed for v1 MVP)
     const existingCards = new Map<string, { name: string; cardType: CardType; maturity: string }>();
     return AnalysisService.analyzeBlock(content, existingCards);
+  }
+
+  private getProviderForContext(context: 'analysis' | 'chat'): ProviderConfig | null {
+    const { settings } = this.plugin;
+    const mapping = settings.agentProviderMapping;
+    const providerId = context === 'analysis' ? mapping.analysis : mapping.chat;
+
+    // Use mapped provider if set
+    if (providerId) {
+      const provider = settings.providers.find(p => p.id === providerId);
+      if (provider) return provider;
+    }
+
+    // Fall back to default provider
+    return this.getDefaultProvider();
   }
 
   private getDefaultProvider(): ProviderConfig | null {
