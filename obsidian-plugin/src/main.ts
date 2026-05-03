@@ -4,7 +4,7 @@
  * Uses LifeWiki 2.0 UI (BlockEditor, AI Analysis Panel, Calendar) with TraceMind AI layer
  */
 
-import { App, Notice, Plugin } from 'obsidian';
+import { App, Notice, Plugin, SettingTab } from 'obsidian';
 import { TraceMindSettingsModal } from './settings';
 import { TraceMindSettings, DEFAULT_SETTINGS, ProviderConfig } from './settings-types';
 import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './views/block-editor';
@@ -87,12 +87,8 @@ export class TraceMindPlugin extends Plugin {
         return this.calendarView;
       });
 
-      // Register settings modal (options button in community plugins list)
-      this.addOptions((options) => {
-        options.addOption('settings', 'TraceMind 设置', () => {
-          new TraceMindSettingsModal(this.app, this).open();
-        });
-      });
+      // Register settings tab (gear icon in community plugins list)
+      this.addSettingTab(new TraceMindSettingsRedirectTab(this.app, this));
 
       // Ribbon icons
       this.addRibbonIcon('brain', '打开 TraceMind', () => {
@@ -874,3 +870,22 @@ function getCardFolder(cardType: CardType): string {
 }
 
 export default TraceMindPlugin;
+
+/**
+ * Lightweight setting tab that immediately opens the modal.
+ * This is the Obsidian standard for community plugin settings.
+ */
+class TraceMindSettingsRedirectTab extends SettingTab {
+  constructor(app: App, private plugin: TraceMindPlugin) {
+    super(app, plugin);
+  }
+
+  display(): void {
+    new TraceMindSettingsModal(this.app, this.plugin).open();
+  }
+
+  hide(): void {
+    // Close the modal if it's open
+    this.app.workspace.closeModals();
+  }
+}
