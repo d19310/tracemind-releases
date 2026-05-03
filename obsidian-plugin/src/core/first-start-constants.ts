@@ -3,8 +3,8 @@
  * Pure module with no Obsidian dependency - testable in Node.js.
  */
 
-export const REQUIRED_DIRS = ['Daily', 'Person', 'Object', 'Theme'];
-export const PROFILE_PATH = 'Daily/PROFILE.md';
+export const REQUIRED_DIRS = ['Daily', 'Person', 'Object', 'Theme', 'TraceMind'];
+export const PROFILE_PATH = 'TraceMind/PROFILE.md';
 
 /**
  * Minimal interface for checking file existence.

@@ -61,30 +61,43 @@ class FirstStartModal extends Modal {
     contentEl.createEl('h3', { text: '步骤 2：创建用户档案' });
     new Setting(contentEl)
       .setName('初始化 PROFILE.md')
-      .setDesc('在 Daily 目录下创建用户档案文件')
+      .setDesc('在 TraceMind 目录下创建用户档案文件')
       .addButton(btn => {
         btn.setButtonText('创建档案');
         btn.onClick(async () => {
           const profileContent = `---
 name: ""
-created: ${new Date().toISOString()}
-version: "1.0"
+occupation: ""
+company: ""
+city: ""
+skills: []
+roles: []
+relationships: []
+goals: []
+focusAreas: []
 ---
 
 # 用户档案
 
 ## 基本信息
 - 姓名：
-- 公司：
-- 职位：
+- 公司/组织：
+- 职位/职业：
+- 城市：
 
-## 常用联系人
-<!-- 在此列出你经常互动的人 -->
+## 技能与专业
+- _暂无_
 
-## 正在进行的项目
-<!-- 在此列出你当前的项目 -->
+## 角色与关系
+- _暂无_
+
+## 目标与计划
+- _暂无_
+
+## 关注领域
+- _暂无_
 `;
-          await this.app.vault.create('Daily/PROFILE.md', profileContent);
+          await this.app.vault.create('TraceMind/PROFILE.md', profileContent);
           btn.setButtonText('已完成');
           btn.setDisabled(true);
           new Notice('档案创建完成');

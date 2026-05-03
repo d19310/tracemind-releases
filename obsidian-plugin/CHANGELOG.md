@@ -66,3 +66,71 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 ### Migration
 - 从 LifeWiki 2.0 升级：需删除旧 `.obsidian/plugins/lifewiki/` 目录后重新安装
 - 旧 Entity 数据不会自动迁移，需手动导入
+
+## [2.0.1] - 2026-05-03
+
+### AI 分析交互重构（PRD 引导式渐进澄清）
+- **`ai-analysis-panel.ts`** — 自然对话式交互：AI 逐实体提问，用户打字回答，LLM 解析后直接确认保存
+- **`ai-analysis-panel.ts`** — 四个阶段：摘要 → 澄清 → 已知实体补充 → 完成
+- **`ai-analysis-panel.ts`** — 自然语言命令："跳过"、"结束"、"没有了"
+- **`ai-analysis-panel.ts`** — `renderAnalysisStart` 输出自然开场白："这条日记中提到的 **XX** 我不太熟悉...**XX** 我了解"
+- **`ai-analysis-panel.ts`** — 结束语："好了，这次先到这里。**XX** 已更新"
+- **`ai-analysis-panel.ts`** — `parseClarificationResponse` 用 LLM 提取属性，prompt 含默认值示例引导 LLM 推断
+
+### LLM 实体提取优化
+- **`llm-entity-extractor.ts`** — `parseLLMResponse` 直接搜索 `{"entities"` + 大括号配对，绕过 thinking 标签解析
+- **`llm-entity-extractor.ts`** — 提取 prompt 增强：明确命名实体定义、禁止提取项（抽象概念/泛泛名词）、宁缺毋滥（confidence < 0.6 不加入）、最多 5 个、theme 谨慎使用
+- **`llm-entity-extractor.ts`** — 示例中加入 theme 类型实体（如"H200供货紧张"）
+- **`analysis-service.ts`** — `gapToQuestion` 不再问 subtype（LLM 可推断），改问状态/时间节点等更重要的信息
+- **`analysis-service.ts`** — 过滤 subtype 缺口，避免无意义提问
+
+### 实体优先级算法
+- **`core/context-card.ts`** — `calculatePriorityScore` 新增种子分：新实体 P0 属性越多越先问（person 0.75 > object 0.5 > theme 0.25）
+
+### AC 状态机（Aho-Corasick）
+- **`ac-entity-scanner.ts`**（新文件）— 三层匹配：精确 → 别名 → 前缀，预扫描日记发现已知实体
+- **`analysis-service.ts`** — 分析前 AC 扫描 + 字符重叠候选（最多 10 个），注入 LLM prompt 避免重复提取
+- **`analysis-service.ts`** — AC 命中的已知实体强制加入结果，确保面板显示和后续询问
+
+### PROFILE.md 集成
+- **`core/user-profile.ts`** — 改为 YAML frontmatter 格式（`js-yaml` 解析），消除 key 名不匹配问题
+- **`core/user-profile.ts`** — 保留 legacy markdown 解析器作为 fallback
+- **`main.ts`** — 新增 `getUserProfileContext()` 和 `getUserProfile()` 方法
+- **`ai-analysis-panel.ts`** — 澄清解析 prompt 注入用户档案，LLM 可推断"是同事 → 同公司"
+- **`ai-analysis-panel.ts`** — 对话助手 system prompt 注入用户档案
+- **`llm-entity-extractor.ts`** — 实体提取 prompt 注入用户档案
+- **`core/first-start.ts`** — 首次引导 PROFILE.md 模板改为 frontmatter 格式
+
+### 已知实体识别与处理
+- **`main.ts`** — `analyzeBlock` 从 `entityIndex.entries` 加载已有卡片，修复 `existingCards` 永远为空的 bug
+- **`main.ts`** — `entry.cardType` 使用 `entry.type`(Wiki type) fallback
+- **`ai-analysis-panel.ts`** — 全部已知实体时进入 `review_known` 询问"有新的信息要补充吗？"
+- **`ai-analysis-panel.ts`** — `allSessionEntities` 保存全量实体列表，避免队列清空后丢失
+
+### 元数据与属性
+- **`ai-analysis-panel.ts`** — `parseClarificationResponse` prompt 修正 Person 属性名：`title` → `role`，`relationship` → `relationship_to_user`
+- **`ai-analysis-panel.ts`** — `normalizeAttributes()` 映射 12 种常见 LLM 变体（title/position/job → role，organization → company 等）
+- **`ai-analysis-panel.ts`** — `flattenAttributes()` 兜底处理 LLM 嵌套属性（`{person: {company: ...}}` → `{company: ...}`）
+- **`ai-analysis-panel.ts`** — 别名处理：LLM 提取别名后自动写入 frontmatter `aliases` 字段，合并去重
+- **`main.ts`** — `updateEntity` 增加 `aliases` 字段处理
+
+### 互动记录与双链
+- **`main.ts`** — `wikifyContent()` 自动将互动记录中的已知实体名转为 `[[Person/name|name]]` 双链
+- **`ai-analysis-panel.ts`** — 互动记录内容 = 完整日记原文（体现共现关系），澄清回答 ≠ 互动记录
+- **`storage/markdown-card.ts`** — 删除独立的 `## 关联实体` section，双链改为内联在互动记录中
+
+### 会话持久化与历史回放
+- **`ai-analysis-panel.ts`** — `addChatMessage` 自动持久化所有消息（user 和 assistant）到 session JSON
+- **`ai-analysis-panel.ts`** — `renderSession` 检查 `session.messages`：有历史 → 回放对话，无历史 → 新分析
+- **`ai-analysis-panel.ts`** — `replayingHistory` 标记防止回放时重复写入
+- **`ai-analysis-panel.ts`** — `showAgentSession` 新分析时清空 `messages` 数组
+
+### Bug 修复
+- **`main.ts`** — `buildAnalysisResultImpl` + `buildAiResponseImpl` 提取为独立函数，修复 `AIProviderAdapter` 调用不存在的 `this.buildAnalysisResult`
+- **`main.ts`** — `analyzeBlock` 增加 `blockId` 参数，`analyzeCurrentBlock` 改为调用 `this.aiProvider.analyzeBlock()`
+- **`ai-analysis-panel.ts`** — 修复 `'帮'` → `'帞'` 错别字（Unicode 码差 1 位）
+- **`ai-analysis-panel.ts`** — 修复"继纭补充" → "继续补充"
+- **`ai-analysis-panel.ts`** — 修复全部已知时实体名空白（使用 `allSessionEntities`）
+- **`ai-analysis-panel.ts`** — 修复澄清后不创建卡片（去除 `Object.keys().length > 0` 条件）
+- **`ai-analysis-panel.ts`** — 修复 `finishClarification` 中 `knownEntities` 被提前清空
+- **`storage/markdown-card.ts`** — 修复 `cardTypeToWikiType` 映射 object → `project`

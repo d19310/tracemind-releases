@@ -141,11 +141,18 @@ export function calculatePriorityScore(
   const priority = ATTRIBUTE_PRIORITY[cardType];
   if (priority.p0.length + priority.p1.length + priority.p2.length === 0) return 0;
 
-  // Calculate tier weights: partial credit per tier
+  // Calculate tier weights: partial credit per tier.
+  // For new entities with no attributes filled, use P0 count as seed score
+  // so that person (3 P0) > object (2 P0) > theme (1 P0) sorts correctly.
   let priorityWeight = 0;
 
   const p0Filled = priority.p0.filter(attr => attributes[attr] != null).length;
-  priorityWeight += (p0Filled / Math.max(priority.p0.length, 1)) * PRIORITY_WEIGHTS.P0;
+  const p0Ratio = p0Filled / Math.max(priority.p0.length, 1);
+  // If no P0 attributes filled, seed with the count-based potential weight
+  const effectiveP0Ratio = p0Filled === 0 && priority.p0.length > 0
+    ? (priority.p0.length / 3.0) * 0.5  // person=0.5, object=0.33, theme=0.17 seeded
+    : p0Ratio;
+  priorityWeight += effectiveP0Ratio * PRIORITY_WEIGHTS.P0;
 
   if (priority.p1.length > 0) {
     const p1Filled = priority.p1.filter(attr => attributes[attr] != null).length;

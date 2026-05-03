@@ -2416,20 +2416,27 @@ export class BlockEditorView extends ItemView {
 
 		try {
 			const aiProvider = this.plugin.getAIProvider();
-			result = await aiProvider.analyzeBlock(block.content);
+			result = await aiProvider.analyzeBlock(block.content, block.id);
+			console.log('[TraceMind] block-editor: analyzeBlock result:', result);
+			console.log('[TraceMind] block-editor: aiView exists:', !!aiView);
 
 			const persistedSession = sessionManager.setSession(block.id, result, effectiveParentId);
+			console.log('[TraceMind] block-editor: persistedSession:', persistedSession);
 
 			// Notify AI panel - use parent's content if child block
 			if (aiView) {
 				const displayContent = effectiveParentId
 					? this.blocks.find(b => b.id === effectiveParentId)?.content || block.content
 					: block.content;
+				console.log('[TraceMind] block-editor: calling showAgentSession');
 				if (persistedSession) {
 					aiView.showAgentSession(block.id, displayContent, persistedSession, effectiveParentId);
 				} else {
+					console.log('[TraceMind] block-editor: no persistedSession, calling startNewSession');
 					aiView.startNewSession(block.id, displayContent, result.aiResponse || '', effectiveParentId);
 				}
+			} else {
+				console.warn('[TraceMind] block-editor: aiView is null');
 			}
 
 			// Update block category based on AI analysis result (only for parent blocks with initial placeholder)
@@ -2457,7 +2464,7 @@ export class BlockEditorView extends ItemView {
 	private async updateBlockCategory(block: ParsedBlock) {
 		try {
 			const provider = this.plugin.getAIProvider();
-			const analysisResult = await provider.analyzeBlock(block.content);
+			const analysisResult = await provider.analyzeBlock(block.content, block.id);
 
 			if (analysisResult.areas && analysisResult.areas.length > 0) {
 				const newCategory = tagsToCategory(analysisResult.areas);

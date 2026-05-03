@@ -35,6 +35,14 @@ export class AIAnalysisPanelView extends ItemView {
 	private thinkingEl: HTMLElement | null = null;
 	private hasTodayInsightAttention: boolean = false;
 
+	// PRD-guided clarification state
+	private clarificationPhase: 'summary' | 'clarifying' | 'review_known' | 'complete' = 'summary';
+	private clarificationQueue: EntityPreview[] = [];
+	private knownEntities: EntityPreview[] = [];
+	private currentEntityIndex: number = 0;
+	private allSessionEntities: EntityPreview[] = [];
+	private replayingHistory: boolean = false;
+
 	constructor(leaf: WorkspaceLeaf, plugin: TraceMindPlugin) {
 		super(leaf);
 		this.plugin = plugin;
@@ -1110,6 +1118,7 @@ export class AIAnalysisPanelView extends ItemView {
 			return;
 		}
 
+		// Analysis mode: show dialogue in chatMessagesEl for 'block' tab
 		this.renderAnalysisTabs();
 		if (this.analysisTab === 'index') {
 			this.emptyStateEl?.removeClass('visible');
@@ -1118,15 +1127,15 @@ export class AIAnalysisPanelView extends ItemView {
 			this.entityIndexEl?.addClass('visible');
 		} else {
 			this.entityIndexEl?.removeClass('visible');
+			this.blockInsightsEl?.removeClass('visible');
 			if (!this.activeBlockId) {
 				this.emptyStateEl?.addClass('visible');
 				this.chatMessagesEl?.removeClass('visible');
-				this.blockInsightsEl?.removeClass('visible');
 				return;
 			}
 			this.emptyStateEl?.removeClass('visible');
-			this.chatMessagesEl?.removeClass('visible');
-			this.blockInsightsEl?.addClass('visible');
+			// Show chatMessagesEl for the PRD-guided dialogue flow
+			this.chatMessagesEl?.addClass('visible');
 		}
 		this.updateInputVisibility();
 	}
@@ -1285,44 +1294,205 @@ export class AIAnalysisPanelView extends ItemView {
 	}
 
 	showAgentSession(blockId: string, blockContent: string, session: BlockSession, parentId: string | null = null) {
+		console.log('[TraceMind] showAgentSession called: blockId=', blockId, 'hasAnalysisResult=', !!session.analysisResult);
 		this.switchToAnalysisMode();
 		this.activeBlockId = blockId;
 		this.activeParentId = parentId;
-		this.showChatState();
 
 		const sessionManager = this.plugin.getSessionManager();
+		// Start fresh: clear old messages when beginning new analysis
 		const persistedSession = sessionManager.setSession(blockId, {
 			...session,
-			content: session.content || blockContent
+			content: session.content || blockContent,
+			messages: [], // fresh start for new analysis
 		}, parentId);
 
-		this.renderSession(persistedSession);
+		this.renderAnalysisStart(persistedSession);
+	}
+
+	private async renderAnalysisStart(session: BlockSession) {
+		if (!this.chatMessagesEl) return;
+		this.chatMessagesEl.empty();
+
+		const result = session.analysisResult;
+		if (!result) {
+			this.showEmptyState();
+			return;
+		}
+
+		// Build entity lists
+		const allEntities = this.flattenEntityPreviews(result);
+		const newEntities = allEntities.filter(e => !e.isArchived);
+		const archivedEntities = allEntities.filter(e => e.isArchived);
+
+		// Initialize clarification queue with new entities, sorted by priority
+		this.clarificationQueue = [...newEntities].sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0));
+		this.knownEntities = [...archivedEntities];
+		this.allSessionEntities = [...newEntities, ...archivedEntities];
+		this.currentEntityIndex = 0;
+		this.clarificationPhase = 'summary';
+
+		// Show thinking state
+		this.showChatState();
+
+		// Phase 1: Natural language summary
+		const newNames = newEntities.map(e => '**' + e.name + '**');
+		const archivedNames = archivedEntities.map(e => '**' + e.name + '**');
+
+		let summary = '';
+		if (allEntities.length === 0) {
+			this.addChatMessage('assistant', '\u8FD9\u6761\u65E5\u8BB0\u6682\u65F6\u6CA1\u6709\u9700\u8981\u786E\u8BA4\u5F52\u6863\u7684\u5185\u5BB9\u3002');
+			this.clarificationPhase = 'complete';
+			return;
+		}
+
+		// Build natural opening sentence
+		if (newNames.length > 0 && archivedNames.length > 0) {
+			summary = '\u8FD9\u6761\u65E5\u8BB0\u4E2D\u63D0\u5230\u7684 ' + newNames.join('\u3001') + ' \u6211\u4E0D\u592A\u719F\u6089\uFF0C\u9700\u8981\u4F60\u5E2E\u6211\u8865\u5145\u4E00\u4E9B\u4FE1\u606F\u3002' + archivedNames.join('\u3001') + ' \u6211\u4E86\u89E3\u3002';
+		} else if (newNames.length > 0) {
+			summary = '\u8FD9\u6761\u65E5\u8BB0\u4E2D\u63D0\u5230\u7684 ' + newNames.join('\u3001') + ' \u6211\u4E0D\u592A\u719F\u6089\uFF0C\u9700\u8981\u4F60\u5E2E\u6211\u8865\u5145\u4E00\u4E9B\u4FE1\u606F\u3002';
+		} else {
+			summary = '\u8FD9\u6761\u65E5\u8BB0\u4E2D\u63D0\u5230\u7684 ' + archivedNames.join('\u3001') + ' \u6211\u90FD\u4E86\u89E3\u3002';
+		}
+		this.addChatMessage('assistant', summary);
+
+		// Start clarification if there are new entities
+		if (this.clarificationQueue.length > 0) {
+			this.clarificationPhase = 'clarifying';
+			const firstName = '**' + this.clarificationQueue[0].name + '**';
+			this.addChatMessage('assistant', '\u5148\u4ECE ' + firstName + ' \u5F00\u59CB\u5427\u3002');
+			setTimeout(async () => { await this.askCurrentEntityQuestion(); }, 500);
+		} else {
+			// No new entities — check if we should ask about known entities
+			await this.finishClarification();
+		}
+
+		this.scrollToBottom();
+	}
+
+	/**
+	 * Ask a clarification question for the current entity in the queue.
+	 */
+	private async askCurrentEntityQuestion() {
+		if (this.currentEntityIndex >= this.clarificationQueue.length) {
+			await this.finishClarification();
+			return;
+		}
+
+		const entity = this.clarificationQueue[this.currentEntityIndex];
+		const question = entity.clarificationQuestions?.[0] ?? '\u80FD\u544A\u8BC9\u6211\u5173\u4E8E\u300C' + entity.name + '\u300D\u7684\u66F4\u591A\u4FE1\u606F\u5417\uFF1F';
+
+		this.addChatMessage('assistant', question);
+		this.scrollToBottom();
+
+		if (this.inputTextarea) {
+			this.inputTextarea.placeholder = '回复关于\u300C' + entity.name + '\u300D\u7684\u95EE\u9898\uFF0C\u6216\u8BF4\u201C\u8DF3\u8FC7\u201D';
+			this.inputTextarea.focus();
+		}
+	}
+
+	/**
+	 * Skip current entity and move to the next one.
+	 */
+	private async skipCurrentEntity() {
+		const skipName = this.clarificationQueue[this.currentEntityIndex].name;
+		this.addChatMessage('assistant', '\u597D\u7684\uFF0C\u5148\u8DF3\u8FC7 **' + skipName + '**\u3002');
+		this.currentEntityIndex++;
+		this.clarificationPhase = 'clarifying';
+		if (this.currentEntityIndex >= this.clarificationQueue.length) {
+			await this.finishClarification();
+		} else {
+			const nextName = this.clarificationQueue[this.currentEntityIndex].name;
+			this.addChatMessage('assistant', '\u518D\u6765\u770B\u770B **' + nextName + '**\u3002');
+			await this.askCurrentEntityQuestion();
+		}
+	}
+
+	/**
+	 * Finish the clarification flow and show completion summary.
+	 */
+	private async finishClarification() {
+		// If there are known entities, ask if user wants to update them
+		if (this.knownEntities.length > 0 && this.clarificationPhase !== 'review_known') {
+			this.clarificationPhase = 'review_known';
+			const names = this.knownEntities.map(function(e: EntityPreview) { return '**' + e.name + '**'; }).join('\u3001');
+			this.addChatMessage('assistant', '\u5BF9\u4E86\uFF0C' + names + ' \u4F60\u8FD8\u6709\u65B0\u7684\u4FE1\u606F\u8981\u8865\u5145\u5417\uFF1F\u6CA1\u6709\u7684\u8BDD\u8BF4\u201C\u6CA1\u6709\u4E86\u201D\u5C31\u597D\u3002');
+			this.scrollToBottom();
+			if (this.inputTextarea) {
+				this.inputTextarea.placeholder = '\u8F93\u5165\u8865\u5145\u4FE1\u606F\uFF0C\u6216\u8BF4\u201C\u6CA1\u6709\u4E86\u201D\u2026';
+				this.inputTextarea.focus();
+			}
+			return;
+		}
+
+		this.clarificationPhase = 'complete';
+
+		if (this.allSessionEntities.length > 0) {
+			const names = this.allSessionEntities.map(function(e: EntityPreview) { return '**' + e.name + '**'; }).join('\u3001');
+			this.addChatMessage('assistant', '\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002' + names + ' \u5DF2\u66F4\u65B0\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
+		} else {
+			this.addChatMessage('assistant', '\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
+		}
+		this.scrollToBottom();
+
+		if (this.inputTextarea) {
+			this.inputTextarea.placeholder = '\u56DE\u7B54\u6F84\u6E05\u95EE\u9898\u6216\u8865\u5145\u80CC\u666F...';
+		}
 	}
 
 	private renderSession(session: BlockSession) {
-		if (!this.chatMessagesEl) return;
-		this.chatMessagesEl.empty();
-		this.renderBlockInsightCards(session);
+		// If session has messages, render them as chat history
+		if (session.messages && session.messages.length > 0) {
+			this.replayingHistory = true;
+			if (this.chatMessagesEl) {
+				this.chatMessagesEl.empty();
+				for (const msg of session.messages) {
+					if (msg.role === 'user' || msg.role === 'assistant') {
+						this.addChatMessage(msg.role, msg.content);
+					}
+				}
+			}
+			this.replayingHistory = false;
+			this.showChatState();
+			return;
+		}
+		// No history — start analysis flow
+		this.renderAnalysisStart(session);
 	}
 
 	updateAnalysis(result: AnalysisResult) {
+		console.log('[TraceMind] updateAnalysis called: blockId=', result.blockId);
+		if (!this.activeBlockId && result.blockId) {
+			this.activeBlockId = result.blockId;
+			this.activeParentId = null;
+		}
 		if (!this.activeBlockId) return;
 		const sessionManager = this.plugin.getSessionManager();
 		sessionManager.setAnalysisResult(this.activeBlockId, result, this.activeParentId);
-		this.renderBlockInsightCards(sessionManager.getSession(this.activeBlockId, this.activeParentId));
+		this.switchToAnalysisMode();
+		const currentSession = sessionManager.getSession(this.activeBlockId, this.activeParentId);
+		if (currentSession) {
+			this.renderAnalysisStart(currentSession);
+		}
 		void this.refreshEntityIndexAttention();
 	}
 
 	private renderBlockInsightCards(session?: BlockSession | null) {
-		if (!this.blockInsightsEl) return;
+		if (!this.blockInsightsEl) {
+			console.log('[TraceMind] renderBlockInsight: blockInsightsEl is null');
+			return;
+		}
 		this.blockInsightsEl.empty();
 
+		console.log('[TraceMind] renderBlockInsight: mode=', this.mode, 'hasSession=', !!session, 'analysisResult=', session?.analysisResult ? 'present' : 'null');
 		if (!session || this.mode !== 'analysis') {
 			this.blockInsightsEl.removeClass('visible');
+			console.log('[TraceMind] renderBlockInsight: early return - no session or not analysis mode');
 			return;
 		}
 
 		const entities = this.flattenEntityPreviews(session.analysisResult);
+		console.log('[TraceMind] renderBlockInsight: flattened entities count:', entities.length, entities);
 		let cardCount = 0;
 
 		cardCount += this.renderEntityCards(this.blockInsightsEl, entities, session);
@@ -1799,6 +1969,13 @@ export class AIAnalysisPanelView extends ItemView {
 
 		this.renderMessageContent(msgEl, content);
 		this.scrollToBottom();
+
+		// Persist all messages to session for history playback (skip during replay)
+		if (!this.replayingHistory && this.mode === 'analysis' && this.activeBlockId) {
+			const sessionManager = this.plugin.getSessionManager();
+			sessionManager.addMessage(this.activeBlockId, { role, content }, this.activeParentId);
+		}
+
 		return msgEl;
 	}
 
@@ -1845,6 +2022,49 @@ export class AIAnalysisPanelView extends ItemView {
 
 		if (!this.activeBlockId) return;
 
+		// Handle natural language commands in analysis clarification flow
+		const lowerContent = content.toLowerCase().trim();
+		if (this.clarificationPhase === 'review_known') {
+			if (lowerContent === '\u6CA1\u6709' || lowerContent === '\u6CA1\u6709\u4E86' || lowerContent === '\u4E0D\u7528\u4E86' || lowerContent === 'no' || lowerContent === '\u7ED3\u675F') {
+				this.isLoading = true;
+				this.inputTextarea.value = '';
+				this.autoResizeTextarea();
+				this.updateSendBtnState();
+				this.addChatMessage('user', content);
+				this.addChatMessage('assistant', '\u597D\u7684\uFF0C\u90A3\u5C31\u5230\u8FD9\u91CC\u3002');
+				this.knownEntities = [];
+				await this.finishClarification();
+				this.isLoading = false;
+				this.updateSendBtnState();
+				return;
+			}
+		}
+		if (this.clarificationPhase === 'clarifying') {
+			if (lowerContent === '\u8DF3\u8FC7' || lowerContent === 'skip' || lowerContent === '\u4E0B\u4E00\u4E2A' || lowerContent === 'next') {
+				this.isLoading = true;
+				this.inputTextarea.value = '';
+				this.autoResizeTextarea();
+				this.updateSendBtnState();
+				this.addChatMessage('user', content);
+				await this.skipCurrentEntity();
+				this.isLoading = false;
+				this.updateSendBtnState();
+				return;
+			}
+
+			if (lowerContent === '\u7ED3\u675F' || lowerContent === '\u4E0D\u7528\u4E86' || lowerContent === 'finish' || lowerContent === 'stop') {
+				this.isLoading = true;
+				this.inputTextarea.value = '';
+				this.autoResizeTextarea();
+				this.updateSendBtnState();
+				this.addChatMessage('user', content);
+				await this.finishClarification();
+				this.isLoading = false;
+				this.updateSendBtnState();
+				return;
+			}
+		}
+
 		this.isLoading = true;
 		this.inputTextarea.value = '';
 		this.autoResizeTextarea();
@@ -1853,52 +2073,52 @@ export class AIAnalysisPanelView extends ItemView {
 		this.addChatMessage('user', content);
 		this.showThinkingIndicator();
 
-		const sessionManager = this.plugin.getSessionManager();
-		sessionManager.addMessage(this.activeBlockId, {
-			role: 'user',
-			content
-		}, this.activeParentId);
+		// Note: addChatMessage below will auto-persist the user message
 
 		try {
-			const result = await this.continueBlockConversation(content);
+			if (this.clarificationPhase === 'clarifying') {
+				// Handle clarification response in natural dialogue
+				const entity = this.clarificationQueue[this.currentEntityIndex];
+				this.hideThinkingIndicator();
 
-			this.hideThinkingIndicator();
+				// Use LLM to parse the user's response for attribute extraction
+				const parsedAttrs = await this.parseClarificationResponse(content, entity);
+				this.addChatMessage('assistant', parsedAttrs.acknowledgment);
 
-			if (result.entityDiscovery && result.entityDiscovery.length > 0) {
-				await this.showEntityConfirmationDialog(result.entityDiscovery);
+				// Always save Context Card — even if no attributes were extracted
+				await this.updateEntityFromClarification(entity, parsedAttrs.attributes);
+
+				// Move to next entity naturally
+				this.currentEntityIndex++;
+				if (this.currentEntityIndex >= this.clarificationQueue.length) {
+					await this.finishClarification();
+				} else {
+					const next = this.clarificationQueue[this.currentEntityIndex];
+					this.addChatMessage('assistant', '\u597D\u7684\uFF0C\u518D\u6765\u770B\u770B **' + next.name + '**\u3002');
+					setTimeout(async () => { await this.askCurrentEntityQuestion(); }, 300);
+				}
+			} else if (this.clarificationPhase === 'review_known') {
+				// User is responding to "any updates for known entities?"
+				this.hideThinkingIndicator();
+
+				const lowerReview = content.toLowerCase().trim();
+				if (lowerReview === '\u6CA1\u6709' || lowerReview === '\u6CA1\u6709\u4E86' || lowerReview === '\u4E0D\u7528\u4E86' || lowerReview === 'no' || lowerReview === 'nope' || lowerReview === '\u7ED3\u675F' || lowerReview === '\u7ED3\u675F\u4E86') {
+					// User has nothing to add — truly finish
+					this.knownEntities = [];
+					await this.finishClarification();
+				} else {
+					// User has new info — extract metadata only, no interaction record
+					let updatedCount = 0;
+					for (const known of this.knownEntities) {
+						const parsedAttrs = await this.parseClarificationResponse(content, known);
+						await this.updateEntityFromClarification(known, parsedAttrs.attributes || {});
+						updatedCount++;
+					}
+					this.addChatMessage('assistant', '\u5DF2\u66F4\u65B0\u4E86 ' + updatedCount + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
+					this.knownEntities = [];
+					await this.finishClarification();
+				}
 			}
-
-			if (result.archivedEntities && result.archivedEntities.length > 0) {
-				await this.handleEntityArchiving(result.archivedEntities);
-			}
-
-			if (result.updateEntities && result.updateEntities.length > 0) {
-				await this.handleEntityUpdate(result.updateEntities);
-			}
-
-			if (result.relations && result.relations.length > 0) {
-				await this.handleRelations(result.relations);
-			}
-
-			if (result.areas && result.areas.length > 0 && this.activeBlockId && !this.activeParentId) {
-				await this.updateBlockCategory(this.activeBlockId, result.areas[0]);
-			}
-
-			const responseText = result.aiResponse || result.response || '';
-			if (responseText) {
-				this.addChatMessage('assistant', responseText);
-			} else if (result.error) {
-				this.addChatMessage('assistant', `错误: ${result.error}`);
-			}
-
-			const aiContent = responseText || (result.error ? `错误: ${result.error}` : '');
-			if (aiContent) {
-				sessionManager.addMessage(this.activeBlockId, {
-					role: 'assistant',
-					content: aiContent
-				}, this.activeParentId);
-			}
-			this.renderBlockInsightCards(sessionManager.getSession(this.activeBlockId, this.activeParentId));
 		} catch (error) {
 			console.error('AI chat error:', error);
 			this.hideThinkingIndicator();
@@ -1909,6 +2129,179 @@ export class AIAnalysisPanelView extends ItemView {
 		this.updateSendBtnState();
 	}
 
+	/**
+	 * Parse user's clarification response using LLM to extract attributes.
+	 */
+	private async parseClarificationResponse(
+		userResponse: string,
+		entity: EntityPreview,
+	): Promise<{ acknowledgment: string; attributes: Record<string, string> }> {
+		const provider = this.plugin.getAIProvider();
+		const profileContext = this.plugin.getUserProfileContext();
+
+		const contextParts = [
+			'\u7528\u6237\u56DE\u7B54\u4E86\u5173\u4E8E\u300C' + entity.name + '\u300D\uFF08\u7C7B\u578B\uFF1A' + this.getEntityTypeLabel(entity.type) + '\uFF09\u7684\u6F84\u6E05\u95EE\u9898\u3002',
+		];
+		if (profileContext) {
+			contextParts.push('');
+			contextParts.push(profileContext);
+			contextParts.push('');
+			contextParts.push('\u6839\u636E\u4E0A\u8FF0\u7528\u6237\u6863\u6848\uFF0C\u8BF7\u505A\u5408\u7406\u63A8\u65AD\u3002\u4F8B\u5982\uFF1A\u7528\u6237\u56DE\u7B54\u201C\u662F\u540C\u4E8B\u201D\uFF0C\u5219\u516C\u53F8\u5E94\u4E0E\u7528\u6237\u6863\u6848\u4E2D\u7684\u516C\u53F8\u76F8\u540C\u3002\u7528\u6237\u56DE\u7B54\u201C\u662F\u670B\u53CB\u201D\uFF0C\u5219\u5173\u7CFB\u4E3A friend\u3002');
+		}
+		contextParts.push('');
+		contextParts.push('\u7528\u6237\u56DE\u7B54\uFF1A' + userResponse);
+		const parsePrompt = contextParts.concat([
+			'\u8BF7\u4ECE\u7528\u6237\u56DE\u7B54\u4E2D\u63D0\u53D6\u5173\u952E\u5C5E\u6027\u4FE1\u606F\u3002',
+			'',
+			'\u5F53\u524D\u5B9E\u4F53\u7C7B\u578B\u662F ' + entity.type + '\uFF0C\u53EF\u7528\u7684\u5C5E\u6027\u540D\u4E3A\uFF1A',
+			entity.type === 'person' ? '- company\uFF08\u516C\u53F8/\u7EC4\u7EC7\uFF09\u3001role\uFF08\u804C\u4F4D/\u89D2\u8272\uFF09\u3001relationship_to_user\uFF08\u4E0E\u7528\u6237\u7684\u5173\u7CFB\uFF09\u3001responsibility\uFF08\u804C\u8D23\uFF09\u3001aliases\uFF08\u522B\u540D/\u6635\u79F0\uFF0C\u7528\u9017\u53F7\u5206\u9694\u591A\u4E2A\u522B\u540D\uFF09'
+				: entity.type === 'object' ? '- subtype\uFF08project/task/product/technology/document/location/other\uFF09\u3001status\uFF08\u72B6\u6001\uFF09\u3001deadline\uFF08\u622A\u6B62\u65E5\u671F\uFF09'
+				: '- subtype\uFF08domain/habit/state/pending_decision\uFF09\u3001occurrenceCount\uFF08\u51FA\u73B0\u6B21\u6570\uFF09',
+			'',
+			'=== \u91CD\u8981\uFF1Aattributes \u5FC5\u987B\u662F\u5E73\u94FA\u7684 key-value\uFF0C\u4E0D\u8981\u5D4C\u5957===',
+			'\u9519\u8BEF\u793A\u4F8B\uFF1A{ "person": { "company": "xxx" } }',
+			'\u6B63\u786E\u793A\u4F8B\uFF1A{ "company": "xxx", "role": "xxx" }',
+			'',
+			'\u8FD4\u56DE\u4E00\u4E2A JSON \u5BF9\u8C61\uFF1A',
+			'{',
+			'  "acknowledgment": "\u5BF9\u7528\u6237\u56DE\u7B54\u7684\u786E\u8BA4\u548C\u603B\u7ED3\uFF0C\u7528\u53CB\u597D\u7684\u8BED\u8A00\u8868\u8FBE",',
+			'  "attributes": { "\u5C5E\u6027\u540D": "\u503C" }',
+			'}',
+			'',
+			'\u53EA\u8FD4\u56DE\u5408\u6CD5 JSON\uFF0C\u4E0D\u8981 markdown\u3002',
+		]).join('\n');
+
+		try {
+			const response = await provider.chat([
+				{ role: 'user', content: parsePrompt }
+			], 'analysis');
+
+			const jsonText = this.extractJSON(response.content);
+			const parsed = JSON.parse(jsonText) as { acknowledgment: string; attributes: Record<string, string> };
+
+			return {
+				acknowledgment: parsed.acknowledgment || `明白了，关于「${entity.name}」的信息已记录。`,
+				attributes: parsed.attributes || {},
+			};
+		} catch {
+			return {
+				acknowledgment: `收到，关于「${entity.name}」的信息已记录。`,
+				attributes: {},
+			};
+		}
+	}
+
+	private extractJSON(text: string): string {
+		const start = text.indexOf('{');
+		if (start < 0) return '{}';
+		let depth = 0;
+		for (let i = start; i < text.length; i++) {
+			if (text[i] === '{') depth++;
+			else if (text[i] === '}') {
+				depth--;
+				if (depth === 0) return text.slice(start, i + 1);
+			}
+		}
+		return '{}';
+	}
+
+	/**
+	 * Update entity Context Card with attributes parsed from user response.
+	 */
+	/**
+	 * Flatten nested attribute objects that LLMs sometimes return.
+	 * Eg: {person: {company: "x"}} → {company: "x"}
+	 */
+	private flattenAttributes(raw: Record<string, string>): Record<string, string> {
+		const flat: Record<string, string> = {};
+		const nestedKeys = ['person', 'object', 'theme'];
+		for (const [key, value] of Object.entries(raw)) {
+			if (nestedKeys.includes(key) && typeof value === 'object' && value !== null) {
+				Object.assign(flat, value);
+			} else {
+				flat[key] = value;
+			}
+		}
+		return flat;
+	}
+
+	/**
+	 * Normalize LLM-returned attribute names to match Context Card P0/P1/P2 keys.
+	 * Handles common LLM variations (e.g. "title" → "role", "relationship" → "relationship_to_user").
+	 */
+	private normalizeAttributes(raw: Record<string, string>, entityType: EntityType): Record<string, string> {
+		const normalized: Record<string, string> = {};
+		const keyMap: Record<string, string> = {
+			// Person attribute name normalizations
+			'title': 'role',
+			'position': 'role',
+			'job': 'role',
+			'relationship': 'relationship_to_user',
+			'relation': 'relationship_to_user',
+			'company_name': 'company',
+			'organization': 'company',
+			// Object / Theme shared normalizations
+			'type': 'subtype',
+			'state': 'status',
+			'due_date': 'deadline',
+			'due': 'deadline',
+			// Theme attribute name normalizations
+			'count': 'occurrenceCount',
+			'frequency': 'occurrenceCount',
+		};
+
+		for (const [key, value] of Object.entries(raw)) {
+			const mappedKey = keyMap[key] || key;
+			normalized[mappedKey] = value;
+		}
+		return normalized;
+	}
+
+	private async updateEntityFromClarification(entity: EntityPreview, attributes: Record<string, string>) {
+		// Flatten any nested attributes (LLM sometimes returns {person: {company: ...}})
+		const flatAttrs = this.flattenAttributes(attributes);
+		const normalizedAttrs = this.normalizeAttributes(flatAttrs, entity.type);
+
+		// Extract aliases — LLM may return comma-separated string or array
+		const aliasesValue = normalizedAttrs['aliases'];
+		delete normalizedAttrs['aliases'];
+		const aliases: string[] = [];
+		if (typeof aliasesValue === 'string') {
+			aliases.push(...aliasesValue.split(/[,，、]/).map((a: string) => a.trim()).filter(Boolean));
+		} else if (Array.isArray(aliasesValue)) {
+			aliases.push(...aliasesValue.map(String));
+		}
+
+		const entityManager = this.plugin.getEntityManager();
+		const existing = entityManager.findEntity(entity.name);
+
+		if (existing) {
+			// Merge aliases and update metadata from clarification
+			const existingEntry = entityManager.getEntity(existing.id);
+			const existingAliases = existingEntry?.aliases || [];
+			const mergedAliases = [...new Set([...existingAliases, ...aliases])];
+			await entityManager.updateEntity(existing.id, {
+				...normalizedAttrs,
+				aliases: mergedAliases,
+				lastUpdated: new Date().toISOString(),
+			});
+		} else {
+			// New entity: interaction = full diary content (shows entity co-occurrence)
+			const diaryContent = this.currentSessionContent();
+			await entityManager.createEntity({
+				title: entity.name,
+				type: entity.type,
+				aliases: aliases,
+				metadata: normalizedAttrs,
+				interactions: [{
+					timestamp: new Date().toISOString(),
+					type: 'diary_mention',
+					content: diaryContent || entity.context || entity.name,
+				}],
+			});
+		}
+	}
+
 	private async continueBlockConversation(content: string): Promise<any> {
 		if (!this.activeBlockId) {
 			throw new Error('No active block');
@@ -1916,17 +2309,24 @@ export class AIAnalysisPanelView extends ItemView {
 
 		const session = this.plugin.getSessionManager().getSession(this.activeBlockId, this.activeParentId);
 		const blockContent = session?.content || this.currentSessionContent();
+		const profileContext = this.plugin.getUserProfileContext();
 
 		const provider = this.plugin.getAIProvider();
 		const messages = session?.messages || [];
+
+		let systemPrompt = '你是 TraceMind 的日记分析助手。围绕当前这条日记，用自然中文帮助用户补充实体背景、事实、关系和互动记录。一次只问一个关键问题，避免输出代码或 JSON。';
+		if (profileContext) {
+			systemPrompt += '\n\n' + profileContext + '\n\n请根据用户档案做合理推断。例如用户回答"是同事"，则公司应与用户相同。';
+		}
+
 		const response = await provider.chat([
 			{
 				role: 'system',
-				content: '你是 TraceMind 的日记分析助手。围绕当前这条日记，用自然中文帮助用户补充实体背景、事实、关系和互动记录。一次只问一个关键问题，避免输出代码或 JSON。'
+				content: systemPrompt,
 			},
 			{
 				role: 'user',
-				content: `当前日记：${blockContent || '无'}`
+				content: '当前日记：' + (blockContent || '无')
 			},
 			...(messages.length > 0 ? messages.slice(-8) : [{ role: 'user' as const, content }])
 		], 'analysis');

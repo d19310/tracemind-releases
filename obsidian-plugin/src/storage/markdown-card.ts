@@ -60,15 +60,20 @@ export function cardToMarkdown(card: ContextCard): string {
     bodyLines.push('');
   }
 
-  // Relations section
-  bodyLines.push('## 关联实体');
-  bodyLines.push('_暂无关联实体_');
-  bodyLines.push('');
+  // Relations section removed — wikilinks are now inline in interaction records
 
-  // Key facts section
-  bodyLines.push('## 关键事实');
-  bodyLines.push('_暂无记录_');
-  bodyLines.push('');
+  // Key facts section - include interactions as facts
+  const interactions = (card.attributes.interactions as Array<{ content: string; timestamp: string }>) || [];
+  if (interactions.length > 0) {
+    bodyLines.push('## 互动记录');
+    for (const ix of interactions.slice(-5)) {
+      const date = ix.timestamp ? new Date(ix.timestamp).toISOString().split('T')[0] : '';
+      bodyLines.push('- ' + date + ' ' + ix.content);
+    }
+    bodyLines.push('');
+  } else if (!card.attributes.interactions) {
+    // No interactions yet — skip the empty section
+  }
 
   const yaml = stringify(frontmatter).trim();
 
@@ -153,20 +158,21 @@ function formatAttributeSummary(card: ContextCard): string[] {
   const lines: string[] = [];
 
   if (card.cardType === 'person') {
-    if (card.attributes.company) lines.push(`- 公司：${card.attributes.company}`);
-    if (card.attributes.role) lines.push(`- 职位：${card.attributes.role}`);
-    if (card.attributes.relationship_to_user) lines.push(`- 关系：${card.attributes.relationship_to_user}`);
+    if (card.attributes.company) lines.push('- \u516C\u53F8\uFF1A' + card.attributes.company);
+    if (card.attributes.role) lines.push('- \u804C\u4F4D\uFF1A' + card.attributes.role);
+    if (card.attributes.relationship_to_user) lines.push('- \u5173\u7CFB\uFF1A' + card.attributes.relationship_to_user);
+    if (card.attributes.responsibility) lines.push('- \u804C\u8D23\uFF1A' + card.attributes.responsibility);
   }
 
   if (card.cardType === 'object') {
-    if (card.attributes.subtype) lines.push(`- 类型：${card.attributes.subtype}`);
-    if (card.attributes.status) lines.push(`- 状态：${card.attributes.status}`);
-    if (card.attributes.deadline) lines.push(`- 截止日期：${card.attributes.deadline}`);
+    if (card.attributes.subtype) lines.push('- \u7C7B\u578B\uFF1A' + card.attributes.subtype);
+    if (card.attributes.status) lines.push('- \u72B6\u6001\uFF1A' + card.attributes.status);
+    if (card.attributes.deadline) lines.push('- \u622A\u6B62\u65E5\u671F\uFF1A' + card.attributes.deadline);
   }
 
   if (card.cardType === 'theme') {
-    if (card.attributes.subtype) lines.push(`- 类型：${card.attributes.subtype}`);
-    if (card.attributes.occurrenceCount) lines.push(`- 出现次数：${card.attributes.occurrenceCount}`);
+    if (card.attributes.subtype) lines.push('- \u7C7B\u578B\uFF1A' + card.attributes.subtype);
+    if (card.attributes.occurrenceCount) lines.push('- \u51FA\u73B0\u6B21\u6570\uFF1A' + card.attributes.occurrenceCount);
   }
 
   return lines;

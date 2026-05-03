@@ -303,14 +303,14 @@ export class TraceMindPlugin extends Plugin {
 
     const content = await this.app.vault.read(activeFile);
     const blockId = activeFile.basename;
+    console.log('[TraceMind] analyzeCurrentBlock file:', activeFile.path, 'content length:', content.length);
+    console.log('[TraceMind] analyzeCurrentBlock content preview:', content.substring(0, 300));
 
     try {
-      const existingCards = new Map<string, { name: string; cardType: CardType; maturity: string }>();
-      const tmResult = AnalysisService.analyzeBlock(content, existingCards);
+      const tmResult = await this.aiProvider.analyzeBlock(content, blockId);
       new Notice(`分析完成: 检测到 ${tmResult.entities.length} 个实体`);
-
-      const lifeWikiResult = this.buildAnalysisResult(tmResult.entities, blockId, content);
-      this.updateAIAnalysis(lifeWikiResult);
+      console.log('[TraceMind] analyzeCurrentBlock: tmResult:', tmResult);
+      this.updateAIAnalysis(tmResult);
     } catch (e) {
       new Notice('分析失败: ' + (e as Error).message);
       console.error('TraceMind: analysis error', e);
@@ -343,76 +343,30 @@ export class TraceMindPlugin extends Plugin {
     return this.aiProvider;
   }
 
-  /**
-   * Build AnalysisResult from analyzed entities for the AI panel.
-   */
-  private buildAnalysisResult(entities: AnalyzedEntity[], blockId: string, content: string): any {
-    const people: any[] = [];
-    const objects: any[] = [];
-    const dimensions: any[] = [];
-
-    const groups: Record<string, any[]> = { people, objects, dimensions };
-    const typeMap: Record<string, 'people' | 'objects' | 'dimensions'> = {
-      person: 'people',
-      object: 'objects',
-      theme: 'dimensions',
-    };
-
-    const needsConfirmation: string[] = [];
-
-    for (const entity of entities) {
-      const group = typeMap[entity.type];
-      const idx = content.indexOf(entity.name);
-      let context = entity.name;
-      if (idx >= 0) {
-        const start = Math.max(0, idx - 20);
-        const end = Math.min(content.length, idx + entity.name.length + 30);
-        let snippet = content.slice(start, end);
-        if (start > 0) snippet = '...' + snippet;
-        if (end < content.length) snippet += '...';
-        context = snippet;
-      }
-
-      groups[group].push({
-        type: entity.type,
-        name: entity.name,
-        confidence: entity.confidence ?? 0.5,
-        context,
-        isArchived: !!entity.existingCardId,
-        newEntity: entity.isNew,
-        maturity: entity.maturity as any,
-        priorityScore: entity.priorityScore,
-        clarificationQuestions: entity.clarificationQuestions,
-      });
-
-      if (entity.isNew) {
-        needsConfirmation.push(entity.name);
-      }
-    }
-
-    return {
-      blockId,
-      timestamp: new Date().toISOString(),
-      category: needsConfirmation.length > 0 ? '待确认' : '工作',
-      areas: [],
-      entities: { people, objects, dimensions },
-      needsConfirmation,
-      aiResponse: this.buildAiResponse(entities),
-    };
+  getUserProfile(): UserProfile {
+    return this.userProfile;
   }
 
-  private buildAiResponse(entities: AnalyzedEntity[]): string {
-    const questions: string[] = [];
-    for (const entity of entities) {
-      if (entity.clarificationQuestions.length > 0) {
-        questions.push(`关于 ${entity.name}：${entity.clarificationQuestions[0]}`);
-      }
-    }
-    if (questions.length === 0) {
-      const names = entities.map(e => e.name).join('、');
-      return `检测到以下实体：${names}。`;
-    }
-    return questions.join('\n');
+  /**
+   * Format user profile as a text string for injection into AI prompts.
+   */
+  getUserProfileContext(): string {
+    const p = this.userProfile;
+    const parts: string[] = [];
+    if (p.name) parts.push('姓名：' + p.name);
+    if (p.occupation) parts.push('职业：' + p.occupation);
+    if (p.company) parts.push('公司/组织：' + p.company);
+    if (p.city) parts.push('城市：' + p.city);
+    if (p.skills.length > 0) parts.push('技能：' + p.skills.join('、'));
+    if (p.relationships.length > 0) parts.push('关系：' + p.relationships.join('、'));
+    if (p.goals.length > 0) parts.push('目标：' + p.goals.join('、'));
+    if (p.focusAreas.length > 0) parts.push('关注领域：' + p.focusAreas.join('、'));
+    if (parts.length === 0) return '';
+    return '\u7528\u6237\u6863\u6848\uFF1A\n' + parts.map(function(x) { return '- ' + x; }).join('\n');
+  }
+
+  private buildAnalysisResult(entities: AnalyzedEntity[], blockId: string, content: string): any {
+    return buildAnalysisResultImpl(entities, blockId, content);
   }
 
   updateAIAnalysis(result: any) {
@@ -423,6 +377,79 @@ export class TraceMindPlugin extends Plugin {
 }
 
 // ===== Adapters for LifeWiki view compatibility =====
+
+/**
+ * Build AnalysisResult from analyzed entities for the AI panel.
+ * Standalone function so both TraceMindPlugin and AIProviderAdapter can use it.
+ */
+function buildAnalysisResultImpl(entities: AnalyzedEntity[], blockId: string, content: string): any {
+  const people: any[] = [];
+  const objects: any[] = [];
+  const dimensions: any[] = [];
+
+  const groups: Record<string, any[]> = { people, objects, dimensions };
+  const typeMap: Record<string, 'people' | 'objects' | 'dimensions'> = {
+    person: 'people',
+    object: 'objects',
+    theme: 'dimensions',
+  };
+
+  const needsConfirmation: string[] = [];
+
+  for (const entity of entities) {
+    const group = typeMap[entity.type];
+    const idx = content.indexOf(entity.name);
+    let context = entity.name;
+    if (idx >= 0) {
+      const start = Math.max(0, idx - 20);
+      const end = Math.min(content.length, idx + entity.name.length + 30);
+      let snippet = content.slice(start, end);
+      if (start > 0) snippet = '...' + snippet;
+      if (end < content.length) snippet += '...';
+      context = snippet;
+    }
+
+    groups[group].push({
+      type: entity.type,
+      name: entity.name,
+      confidence: entity.confidence ?? 0.5,
+      context,
+      isArchived: !!entity.existingCardId,
+      newEntity: entity.isNew,
+      maturity: entity.maturity as any,
+      priorityScore: entity.priorityScore,
+      clarificationQuestions: entity.clarificationQuestions,
+    });
+
+    if (entity.isNew) {
+      needsConfirmation.push(entity.name);
+    }
+  }
+
+  return {
+    blockId,
+    timestamp: new Date().toISOString(),
+    category: needsConfirmation.length > 0 ? '待确认' : '工作',
+    areas: [],
+    entities: { people, objects, dimensions },
+    needsConfirmation,
+    aiResponse: buildAiResponseImpl(entities),
+  };
+}
+
+function buildAiResponseImpl(entities: AnalyzedEntity[]): string {
+  const questions: string[] = [];
+  for (const entity of entities) {
+    if (entity.clarificationQuestions.length > 0) {
+      questions.push(`关于 ${entity.name}：${entity.clarificationQuestions[0]}`);
+    }
+  }
+  if (questions.length === 0) {
+    const names = entities.map(e => e.name).join('、');
+    return `检测到以下实体：${names}。`;
+  }
+  return questions.join('\n');
+}
 
 /**
  * EntityManager adapter backed by TraceMind EntityIndex + vault Context Cards.
@@ -459,12 +486,26 @@ class EntityManagerAdapter {
   async createEntity(entity: any): Promise<any> {
     const cardType = mapEntityType(entity.type);
     const aliases = entity.aliases || [];
+
+    // Wikify interaction content before generating markdown
+    if (entity.interactions && Array.isArray(entity.interactions)) {
+      for (const ix of entity.interactions) {
+        if (ix.content) ix.content = this.wikifyContent(ix.content);
+      }
+    }
+
     const card = ContextCard.create({
       name: entity.title,
       cardType,
       attributes: entity.metadata || {},
       aliases,
     });
+
+    // Add interaction count to attributes
+    if (entity.interactions) {
+      card.attributes.interactionCount = (entity.interactions as any[]).length;
+    }
+
     const md = cardToMarkdown(card);
     const folder = getCardFolder(cardType);
     const path = `${folder}${entity.title}.md`;
@@ -477,11 +518,6 @@ class EntityManagerAdapter {
     // Update in-memory index
     const entry = cardToIndexEntry(md, path);
     this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, entry);
-
-    // Add interaction count to attributes if provided
-    if (entity.interactions) {
-      card.attributes.interactionCount = (entity.interactions as any[]).length;
-    }
 
     return { ...entity, id: entry.id };
   }
@@ -505,6 +541,8 @@ class EntityManagerAdapter {
         card.lastUpdated = value as string;
       } else if (key === 'interactions') {
         card.attributes.interactions = value;
+      } else if (key === 'aliases' && Array.isArray(value)) {
+        card.aliases = value as string[];
       } else {
         card.attributes[key] = value;
       }
@@ -520,8 +558,29 @@ class EntityManagerAdapter {
   }
 
   /**
+   * Wrap known entity names in text with Obsidian [[wikilinks]].
+   * Scans the entity index for names that appear in the text.
+   */
+  private wikifyContent(text: string): string {
+    let result = text;
+    const entries = this.plugin.entityIndex.entries;
+    // Sort by name length descending so longer names get replaced first
+    const sorted = [...entries].sort((a, b) => b.name.length - a.name.length);
+    for (const entry of sorted) {
+      if (entry.name.length < 2) continue;
+      if (result.includes(entry.name)) {
+        const folder = entry.cardType === 'person' ? 'Person' : entry.cardType === 'object' ? 'Object' : 'Theme';
+        const link = '[[' + folder + '/' + entry.name + '|' + entry.name + ']]';
+        result = result.replace(new RegExp(entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), link);
+      }
+    }
+    return result;
+  }
+
+  /**
    * Record an interaction with an entity (e.g., diary mention).
    * Stored in the card's attributes.interactions array.
+   * Known entity names in the content are automatically converted to [[wikilinks]].
    */
   async addInteraction(entityId: string, interaction: { timestamp: string; type: string; content: string; sourceBlockId?: string }): Promise<void> {
     const entry = this.getEntity(entityId);
@@ -533,7 +592,10 @@ class EntityManagerAdapter {
     const content = await this.app.vault.read(file);
     const card = parseCardMarkdown(content);
     const interactions = (card.attributes.interactions as any[]) || [];
-    interactions.push(interaction);
+    interactions.push({
+      ...interaction,
+      content: this.wikifyContent(interaction.content),
+    });
     card.attributes.interactions = interactions;
     card.lastUpdated = new Date().toISOString();
 
@@ -543,6 +605,45 @@ class EntityManagerAdapter {
     // Update index
     const updatedEntry = cardToIndexEntry(md, entry.filePath);
     this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
+  }
+
+  /**
+   * Establish bidirectional wikilink relations between co-occurring entities
+   * from the same diary block. Updates both markdown files and in-memory index.
+   */
+  async linkRelatedEntities(coOccurring: Array<{ name: string; type: string }>): Promise<void> {
+    if (coOccurring.length < 2) return;
+
+    for (const entity of coOccurring) {
+      const entry = this.findEntity(entity.name);
+      if (!entry) continue;
+
+      const file = this.app.vault.getFileByPath(entry.filePath);
+      if (!file) continue;
+
+      const content = await this.app.vault.read(file);
+      const card = parseCardMarkdown(content);
+
+      // Add all OTHER entities as relations based on type
+      for (const other of coOccurring) {
+        if (other.name === entity.name) continue;
+
+        if (other.type === 'person') {
+          if (!card.relatedPeople.includes(other.name)) card.relatedPeople.push(other.name);
+        } else if (other.type === 'object') {
+          if (!card.relatedObjects.includes(other.name)) card.relatedObjects.push(other.name);
+        } else if (other.type === 'theme') {
+          if (!card.relatedThemes.includes(other.name)) card.relatedThemes.push(other.name);
+        }
+      }
+
+      const md = cardToMarkdown(card);
+      await this.app.vault.modify(file, md);
+
+      // Update in-memory index
+      const updatedEntry = cardToIndexEntry(md, entry.filePath);
+      this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
+    }
   }
 
   async enrichEntity(id: string, updates: any): Promise<any> {
@@ -814,12 +915,44 @@ class AIProviderAdapter {
   }
 
   /**
-   * Analyze a diary block using the rules-based AnalysisService.
-   * Falls back to the local extractor (no LLM call needed for v1).
+   * Analyze a diary block using LLM entity extraction.
    */
-  async analyzeBlock(content: string): Promise<any> {
+  async analyzeBlock(content: string, blockId = ''): Promise<any> {
+    // Populate existing cards from entity index
     const existingCards = new Map<string, { name: string; cardType: CardType; maturity: string }>();
-    return AnalysisService.analyzeBlock(content, existingCards);
+    for (const entry of this.plugin.entityIndex.entries) {
+      existingCards.set(entry.id, {
+        name: entry.name,
+        cardType: entry.type as CardType,
+        maturity: entry.maturity || 'L0',
+      });
+    }
+    console.log('[TraceMind] analyzeBlock: loaded', existingCards.size, 'existing cards from index');
+
+    const provider = this.getProviderForContext('analysis');
+    if (!provider) {
+      console.warn('[TraceMind] analyzeBlock: no AI provider configured, cannot extract entities');
+      new Notice('请先在设置中配置 AI Provider');
+      return { entities: [], newEntities: [], existingEntities: [], hasClarifications: false, gapCount: 0 };
+    }
+    console.log('[TraceMind] analyzeBlock: using LLM extraction, provider:', provider.name);
+
+    // Call LLM extraction with user profile context and entity index for AC pre-scanning
+    const profileContext = this.plugin.getUserProfileContext();
+    const tmResult = await AnalysisService.analyzeBlockAsync(content, existingCards, {
+      apiKey: provider.apiKey || '',
+      model: provider.model || 'gpt-4',
+      baseUrl: provider.baseUrl || '',
+      profileContext: profileContext || undefined,
+    }, this.plugin.entityIndex.entries);
+    console.log('[TraceMind] analyzeBlock result entities:', tmResult.entities.length, tmResult);
+
+    // Convert to the format expected by block-editor.ts and AI panel
+    const analysisResult = buildAnalysisResultImpl(tmResult.entities, blockId, content);
+    return {
+      ...analysisResult,
+      analysisResult, // setSession expects analysisResult as a field
+    };
   }
 
   private getProviderForContext(context: 'analysis' | 'chat'): ProviderConfig | null {
