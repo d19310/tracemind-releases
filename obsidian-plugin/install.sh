@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# TraceMind v2.1 installer
+# TraceMind v1.0.0 installer
 # Creates or updates an Obsidian vault and installs the TraceMind plugin.
 #
 
@@ -14,15 +14,13 @@ NC='\033[0m'
 
 PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
-VERSION="v2.1"
-GITHUB_REPO="d19310/lifewiki"
+VERSION="v1.0.0"
+GITHUB_REPO="d19310/tracemind-releases"
 DEFAULT_VAULT_NAME="TraceMind"
 VAULT_PARENT_DIR="$HOME/Documents"
 VAULT_NAME="$DEFAULT_VAULT_NAME"
 VAULT_PATH=""
-USE_LOCAL=false
 OPEN_AFTER_INSTALL=true
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -31,7 +29,7 @@ log_step() { echo -e "${BLUE}==>${NC} $1"; }
 
 usage() {
 	cat <<EOF
-TraceMind v2.1 安装脚本
+TraceMind v1.0.0 安装脚本
 
 用法:
   ./install.sh [选项]
@@ -41,7 +39,6 @@ TraceMind v2.1 安装脚本
   -p, --parent <路径>     Vault 父目录，默认: ${VAULT_PARENT_DIR}
   -v, --vault <路径>      直接指定 Vault 完整路径
   -t, --tag <tag>         Release tag，默认: ${VERSION}
-  -l, --local             使用当前目录本地构建产物安装
   --no-open               安装完成后不自动打开 Obsidian
   -h, --help              显示帮助
 
@@ -49,11 +46,9 @@ TraceMind v2.1 安装脚本
   ./install.sh
   ./install.sh -n "MyTraceMind"
   ./install.sh -v "\$HOME/Obsidian/TraceMind"
-  ./install.sh -l -v "\$HOME/test-tracemind-vault"
 
 说明:
-  -l 本地模式：从当前目录构建并复制 main.js、manifest.json、styles.css。
-  默认模式：从 GitHub Release 下载预构建文件。
+  从 GitHub Release 下载预构建文件安装。
   插件安装目录为 .obsidian/plugins/${PLUGIN_ID}。
 EOF
 }
@@ -87,10 +82,6 @@ while [[ $# -gt 0 ]]; do
 		-t|--tag)
 			VERSION="$2"
 			shift 2
-			;;
-		-l|--local)
-			USE_LOCAL=true
-			shift
 			;;
 		--no-open)
 			OPEN_AFTER_INSTALL=false
@@ -132,12 +123,11 @@ check_system() {
 confirm_install() {
 	echo ""
 	echo "========================================"
-	echo "       TraceMind v2.1 安装确认"
+	echo "       TraceMind v1.0.0 安装确认"
 	echo "========================================"
 	echo ""
 	echo "Vault: ${VAULT_PATH}"
 	echo "插件目录: ${PLUGIN_DIR}"
-	echo "安装来源: $([[ "$USE_LOCAL" == true ]] && echo "本地构建产物" || echo "GitHub Release")"
 	echo ""
 	read -r -p "确认开始安装? (y/n) " reply
 	if [[ ! "$reply" =~ ^[Yy]$ ]]; then
@@ -163,13 +153,6 @@ create_vault_structure() {
 	mkdir -p "${VAULT_PATH}/TraceMind/sessions"
 	mkdir -p "${VAULT_PATH}/TraceMind/index"
 
-	# .lifewiki config (AI agent skills, templates)
-	mkdir -p "${VAULT_PATH}/.lifewiki/index"
-	mkdir -p "${VAULT_PATH}/.lifewiki/sessions"
-	mkdir -p "${VAULT_PATH}/.lifewiki/agents"
-	mkdir -p "${VAULT_PATH}/.lifewiki/skills"
-	mkdir -p "${VAULT_PATH}/.lifewiki/templates"
-
 	local today
 	today="$(date +%Y-%m-%d)"
 	if [[ ! -f "${VAULT_PATH}/Daily/${today}.md" ]]; then
@@ -190,56 +173,6 @@ EOF
 	log_info "Vault 目录结构已准备"
 }
 
-copy_local_defaults() {
-	if [[ -d "${SCRIPT_DIR}/.lifewiki" ]]; then
-		cp -R "${SCRIPT_DIR}/.lifewiki/." "${VAULT_PATH}/.lifewiki/"
-		log_info "已复制默认 Agent/Skill 配置"
-	fi
-}
-
-download_release_source_defaults() {
-	local tmp_dir archive source_dir
-	tmp_dir="$(mktemp -d)"
-	archive="${tmp_dir}/source.tar.gz"
-
-	if curl -fsSL "https://codeload.github.com/${GITHUB_REPO}/tar.gz/refs/tags/${VERSION}" -o "$archive"; then
-		tar -xzf "$archive" -C "$tmp_dir"
-		source_dir="$(find "$tmp_dir" -maxdepth 1 -type d -name '*-*' | head -n 1)"
-		if [[ -n "$source_dir" && -d "${source_dir}/.lifewiki" ]]; then
-			cp -R "${source_dir}/.lifewiki/." "${VAULT_PATH}/.lifewiki/"
-			log_info "已安装默认 Agent/Skill 配置"
-		else
-			log_warn "Release 源码中未找到 .lifewiki 默认配置，已保留空目录"
-		fi
-	else
-		log_warn "默认配置下载失败，插件仍可安装；首次使用时会创建必要数据"
-	fi
-
-	rm -rf "$tmp_dir"
-}
-
-install_plugin_local() {
-	log_step "安装本地插件文件"
-
-	cd "$SCRIPT_DIR"
-	npm install --silent 2>/dev/null || true
-	npm run build
-
-	[[ -f "${SCRIPT_DIR}/main.js" ]] || { log_error "缺少 ${SCRIPT_DIR}/main.js，请先运行 npm run build"; exit 1; }
-	[[ -f "${SCRIPT_DIR}/manifest.json" ]] || { log_error "缺少 manifest.json"; exit 1; }
-
-	cp "${SCRIPT_DIR}/main.js" "${PLUGIN_DIR}/main.js"
-	cp "${SCRIPT_DIR}/manifest.json" "${PLUGIN_DIR}/manifest.json"
-
-	if [[ -f "${SCRIPT_DIR}/styles.css" ]]; then
-		cp "${SCRIPT_DIR}/styles.css" "${PLUGIN_DIR}/styles.css"
-	elif [[ -f "${SCRIPT_DIR}/main.css" ]]; then
-		cp "${SCRIPT_DIR}/main.css" "${PLUGIN_DIR}/styles.css"
-	fi
-
-	copy_local_defaults
-}
-
 download_asset() {
 	local asset="$1"
 	local target="$2"
@@ -256,12 +189,6 @@ install_plugin_from_release() {
 	if ! download_asset "manifest.json" "${PLUGIN_DIR}/manifest.json"; then
 		log_error "manifest.json 下载失败"; exit 1
 	fi
-
-	if ! download_asset "styles.css" "${PLUGIN_DIR}/styles.css"; then
-		log_warn "styles.css 下载失败，继续安装无样式版本"
-	fi
-
-	download_release_source_defaults
 }
 
 enable_plugin_if_safe() {
@@ -283,7 +210,7 @@ enable_plugin_if_safe() {
 show_completion() {
 	echo ""
 	echo "========================================"
-	log_info "TraceMind v2.1 安装完成"
+	log_info "TraceMind v1.0.0 安装完成"
 	echo "========================================"
 	echo ""
 	echo "Vault: ${VAULT_PATH}"
@@ -299,18 +226,13 @@ show_completion() {
 main() {
 	echo ""
 	echo "========================================"
-	echo "       TraceMind v2.1 安装向导"
+	echo "       TraceMind v1.0.0 安装向导"
 	echo "========================================"
 
 	check_system
 	confirm_install
 	create_vault_structure
-
-	if [[ "$USE_LOCAL" == true ]]; then
-		install_plugin_local
-	else
-		install_plugin_from_release
-	fi
+	install_plugin_from_release
 
 	enable_plugin_if_safe
 	show_completion
