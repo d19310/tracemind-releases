@@ -120,6 +120,33 @@ check_system() {
 	log_info "环境检查完成"
 }
 
+prompt_vault_config() {
+	# Skip prompts if -v was already specified
+	if [[ -n "$VAULT_PATH" ]]; then
+		return
+	fi
+
+	echo ""
+	echo "请配置 Vault 路径："
+	echo ""
+
+	# Prompt for vault name
+	read -r -p "Vault 名称 (默认: ${DEFAULT_VAULT_NAME}): " input_name
+	if [[ -n "$input_name" ]]; then
+		VAULT_NAME="$input_name"
+	fi
+
+	# Prompt for parent directory
+	read -r -p "安装目录 (默认: ${VAULT_PARENT_DIR}): " input_parent
+	if [[ -n "$input_parent" ]]; then
+		input_parent="${input_parent/#\~/$HOME}"
+		VAULT_PARENT_DIR="$input_parent"
+	fi
+
+	VAULT_PATH="$(expand_path "${VAULT_PARENT_DIR}/${VAULT_NAME}")"
+	echo ""
+}
+
 confirm_install() {
 	echo ""
 	echo "========================================"
@@ -230,6 +257,7 @@ main() {
 	echo "========================================"
 
 	check_system
+	prompt_vault_config
 	confirm_install
 	create_vault_structure
 	install_plugin_from_release
