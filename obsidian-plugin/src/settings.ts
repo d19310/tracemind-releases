@@ -1,15 +1,11 @@
-import { App, Notice, Setting, SettingTab } from 'obsidian';
+import { App, Notice, Setting, PluginSettingTab } from 'obsidian';
 import type TraceMindPlugin from './main';
 import { chat } from './ai/provider-config';
 
-export class TraceMindSettingTab extends SettingTab {
+export class TraceMindSettingTab extends PluginSettingTab {
 	plugin: TraceMindPlugin;
-	id: string = 'tracemind';
-	name: string = 'TraceMind';
-	icon: string = 'brain';
 
 	constructor(app: App, plugin: TraceMindPlugin) {
-		// @ts-expect-error - obsidian.d.ts doesn't type the constructor, but runtime expects (app, plugin)
 		super(app, plugin);
 		this.plugin = plugin;
 	}
