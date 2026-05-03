@@ -56,8 +56,9 @@ export function buildRequest(
   switch (config.provider) {
     case 'openai': {
       const url = (config.baseUrl || 'https://api.openai.com').replace(/\/+$/, '');
+      const path = url.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions';
       return {
-        url: `${url}/v1/chat/completions`,
+        url: `${url}${path}`,
         method: 'POST',
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
@@ -91,8 +92,9 @@ export function buildRequest(
         ? 'http://localhost:11434'
         : '');
       const url = baseUrl.replace(/\/+$/, '');
+      const path = url.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions';
       return {
-        url: `${url}/v1/chat/completions`,
+        url: `${url}${path}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
