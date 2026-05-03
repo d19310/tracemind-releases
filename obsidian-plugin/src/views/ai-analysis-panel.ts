@@ -1427,6 +1427,36 @@ export class AIAnalysisPanelView extends ItemView {
 
 		this.clarificationPhase = 'complete';
 
+		// Add diary content as interaction for all known entities (new ones already have it from createEntity)
+		const diaryContent = this.currentSessionContent();
+		if (diaryContent) {
+			const entityManager = this.plugin.getEntityManager();
+			for (const e of this.allSessionEntities) {
+				if (e.isArchived) {
+					// Known entity — add diary as interaction
+					const entry = entityManager.findEntity(e.name);
+					if (entry) {
+						await entityManager.addInteraction(entry.id, {
+							timestamp: new Date().toISOString(),
+							type: 'diary_mention',
+							content: diaryContent,
+						});
+					}
+				}
+			}
+		}
+
+		// Re-wikify all interactions now that all entities are in the index
+		if (this.allSessionEntities.length >= 2) {
+			const entityManager = this.plugin.getEntityManager();
+			for (const e of this.allSessionEntities) {
+				const entry = entityManager.findEntity(e.name);
+				if (entry) {
+					await entityManager.refreshWikilinks(entry.id);
+				}
+			}
+		}
+
 		if (this.allSessionEntities.length > 0) {
 			const names = this.allSessionEntities.map(function(e: EntityPreview) { return '**' + e.name + '**'; }).join('\u3001');
 			this.addChatMessage('assistant', '\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002' + names + ' \u5DF2\u66F4\u65B0\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
@@ -2107,14 +2137,19 @@ export class AIAnalysisPanelView extends ItemView {
 					this.knownEntities = [];
 					await this.finishClarification();
 				} else {
-					// User has new info — extract metadata only, no interaction record
-					let updatedCount = 0;
-					for (const known of this.knownEntities) {
-						const parsedAttrs = await this.parseClarificationResponse(content, known);
-						await this.updateEntityFromClarification(known, parsedAttrs.attributes || {});
-						updatedCount++;
+					// User has new info — batch parse all known entities in one LLM call
+					if (this.knownEntities.length === 1) {
+						const parsedAttrs = await this.parseClarificationResponse(content, this.knownEntities[0]);
+						await this.updateEntityFromClarification(this.knownEntities[0], parsedAttrs.attributes || {});
+					} else {
+						// Multiple entities: one batch LLM call
+						const batchAttrs = await this.parseMultiEntityResponse(content, this.knownEntities);
+						for (const known of this.knownEntities) {
+							const attrs = batchAttrs[known.name] || {};
+							await this.updateEntityFromClarification(known, attrs);
+						}
 					}
-					this.addChatMessage('assistant', '\u5DF2\u66F4\u65B0\u4E86 ' + updatedCount + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
+					this.addChatMessage('assistant', '\u5DF2\u66F4\u65B0\u4E86 ' + this.knownEntities.length + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
 					this.knownEntities = [];
 					await this.finishClarification();
 				}
@@ -2127,6 +2162,26 @@ export class AIAnalysisPanelView extends ItemView {
 
 		this.isLoading = false;
 		this.updateSendBtnState();
+	}
+
+	/**
+	 * Parse user response about MULTIPLE entities in one LLM call.
+	 */
+	private async parseMultiEntityResponse(
+		userResponse: string,
+		entities: EntityPreview[],
+	): Promise<Record<string, Record<string, string>>> {
+		const provider = this.plugin.getAIProvider();
+		const entityList = entities.map(e => '- ' + e.name + ' [' + e.type + ']').join('\n');
+		const prompt = '\u7528\u6237\u5BF9\u4EE5\u4E0B\u5B9E\u4F53\u505A\u4E86\u8865\u5145\uFF1A\n' + entityList + '\n\n\u7528\u6237\u56DE\u7B54\uFF1A' + userResponse + '\n\n\u8BF7\u4E3A\u6BCF\u4E2A\u5B9E\u4F53\u63D0\u53D6\u5C5E\u6027\uFF0C\u4F8B\u5982\u7528\u6237\u8BF4\u201C\u5F20\u4E09\u5728\u5B57\u8282\u505APM\uFF0C\u5C0F\u674E\u662F\u5356\u65B9\u201D\uFF0C\u5219\u8FD4\u56DE\uFF1A{"\u5F20\u4E09":{"company":"\u5B57\u8282","role":"PM"},"\u5C0F\u674E":{"relationship_to_user":"\u5356\u65B9"}}\n\u53EA\u8FD4\u56DE\u5408\u6CD5 JSON\u3002';
+
+		try {
+			const response = await provider.chat([{ role: 'user', content: prompt }], 'analysis');
+			const jsonText = this.extractJSON(response.content);
+			return JSON.parse(jsonText) as Record<string, Record<string, string>>;
+		} catch {
+			return {};
+		}
 	}
 
 	/**
@@ -2162,10 +2217,10 @@ export class AIAnalysisPanelView extends ItemView {
 			'\u9519\u8BEF\u793A\u4F8B\uFF1A{ "person": { "company": "xxx" } }',
 			'\u6B63\u786E\u793A\u4F8B\uFF1A{ "company": "xxx", "role": "xxx" }',
 			'',
-			'\u8FD4\u56DE\u4E00\u4E2A JSON \u5BF9\u8C61\uFF1A',
+			'\u8FD4\u56DE\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C\u4F8B\u5982\u7528\u6237\u8BF4\u201C\u5F20\u4E09\u662F\u5B57\u8282\u8DF3\u52A8\u7684\u4EA7\u54C1\u7ECF\u7406\uFF0C\u662F\u6211\u540C\u4E8B\uFF0C\u53EB\u4ED6\u4E09\u54E5\u201D\uFF0C\u5219\u8FD4\u56DE\uFF1A',
 			'{',
-			'  "acknowledgment": "\u5BF9\u7528\u6237\u56DE\u7B54\u7684\u786E\u8BA4\u548C\u603B\u7ED3\uFF0C\u7528\u53CB\u597D\u7684\u8BED\u8A00\u8868\u8FBE",',
-			'  "attributes": { "\u5C5E\u6027\u540D": "\u503C" }',
+			'  "acknowledgment": "\u660E\u767D\u4E86\uFF0C\u5F20\u4E09\u5728\u5B57\u8282\u8DF3\u52A8\u505A\u4EA7\u54C1\u7ECF\u7406\uFF0C\u662F\u4F60\u540C\u4E8B\u3002",',
+			'  "attributes": { "company": "\u5B57\u8282\u8DF3\u52A8", "role": "\u4EA7\u54C1\u7ECF\u7406", "relationship_to_user": "\u540C\u4E8B", "aliases": "\u4E09\u54E5" }',
 			'}',
 			'',
 			'\u53EA\u8FD4\u56DE\u5408\u6CD5 JSON\uFF0C\u4E0D\u8981 markdown\u3002',

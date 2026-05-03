@@ -487,13 +487,6 @@ class EntityManagerAdapter {
     const cardType = mapEntityType(entity.type);
     const aliases = entity.aliases || [];
 
-    // Wikify interaction content before generating markdown
-    if (entity.interactions && Array.isArray(entity.interactions)) {
-      for (const ix of entity.interactions) {
-        if (ix.content) ix.content = this.wikifyContent(ix.content);
-      }
-    }
-
     const card = ContextCard.create({
       name: entity.title,
       cardType,
@@ -501,9 +494,9 @@ class EntityManagerAdapter {
       aliases,
     });
 
-    // Add interaction count to attributes
-    if (entity.interactions) {
-      card.attributes.interactionCount = (entity.interactions as any[]).length;
+    // Store interactions in card attributes (so they appear in markdown)
+    if (entity.interactions && Array.isArray(entity.interactions)) {
+      card.attributes.interactions = entity.interactions;
     }
 
     const md = cardToMarkdown(card);
@@ -563,18 +556,59 @@ class EntityManagerAdapter {
    */
   private wikifyContent(text: string): string {
     let result = text;
+
+    // First pass: fix already-broken nested wikilinks like [[Person/[[Person/name|name]]|name]]
+    result = result.replace(/\[\[(Person|Object|Theme)\/(?:\[\[(Person|Object|Theme)\/[^\]]+\]\])\|([^\]]+)\]\]/g, '[[$1/$3|$3]]');
+
     const entries = this.plugin.entityIndex.entries;
-    // Sort by name length descending so longer names get replaced first
     const sorted = [...entries].sort((a, b) => b.name.length - a.name.length);
     for (const entry of sorted) {
       if (entry.name.length < 2) continue;
-      if (result.includes(entry.name)) {
-        const folder = entry.cardType === 'person' ? 'Person' : entry.cardType === 'object' ? 'Object' : 'Theme';
-        const link = '[[' + folder + '/' + entry.name + '|' + entry.name + ']]';
-        result = result.replace(new RegExp(entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), link);
-      }
+      // Skip if already inside wikilink
+      const escapedName = entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!new RegExp('(?<!\\[\\[)' + escapedName + '(?!\\]\\])').test(result)) continue;
+
+      const folder = entry.cardType === 'person' ? 'Person' : entry.cardType === 'object' ? 'Object' : 'Theme';
+      const link = '[[' + folder + '/' + entry.name + '|' + entry.name + ']]';
+      const regex = new RegExp('(?<!\\[\\[)' + escapedName + '(?!\\]\\])', 'g');
+      result = result.replace(regex, link);
     }
     return result;
+  }
+
+  /**
+   * Re-wikify all interaction records for an entity.
+   * Called after all session entities are in the index so bidirectional links work.
+   */
+  async refreshWikilinks(entityId: string): Promise<void> {
+    const entry = this.getEntity(entityId);
+    if (!entry) return;
+
+    const file = this.app.vault.getFileByPath(entry.filePath);
+    if (!file) return;
+
+    const content = await this.app.vault.read(file);
+    const card = parseCardMarkdown(content);
+    const interactions = (card.attributes.interactions as any[]) || [];
+
+    let changed = false;
+    for (const ix of interactions) {
+      if (ix.content && typeof ix.content === 'string') {
+        const wikified = this.wikifyContent(ix.content);
+        if (wikified !== ix.content) {
+          ix.content = wikified;
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      card.attributes.interactions = interactions;
+      const md = cardToMarkdown(card);
+      await this.app.vault.modify(file, md);
+      const updatedEntry = cardToIndexEntry(md, entry.filePath);
+      this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
+    }
   }
 
   /**
@@ -592,10 +626,7 @@ class EntityManagerAdapter {
     const content = await this.app.vault.read(file);
     const card = parseCardMarkdown(content);
     const interactions = (card.attributes.interactions as any[]) || [];
-    interactions.push({
-      ...interaction,
-      content: this.wikifyContent(interaction.content),
-    });
+    interactions.push(interaction);
     card.attributes.interactions = interactions;
     card.lastUpdated = new Date().toISOString();
 

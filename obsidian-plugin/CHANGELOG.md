@@ -134,3 +134,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 - **`ai-analysis-panel.ts`** — 修复澄清后不创建卡片（去除 `Object.keys().length > 0` 条件）
 - **`ai-analysis-panel.ts`** — 修复 `finishClarification` 中 `knownEntities` 被提前清空
 - **`storage/markdown-card.ts`** — 修复 `cardTypeToWikiType` 映射 object → `project`
+
+### 近期修复
+- **`ai-analysis-panel.ts`** — `parseClarificationResponse` prompt 示例改为具体值，修复 LLM 照抄占位文字 "对用户回答的确认和总结..."
+- **`ai-analysis-panel.ts`** — `parseMultiEntityResponse` 新增方法，review_known 多实体合并为一次 LLM 请求
+- **`ai-analysis-panel.ts`** — 互动记录内容改为完整日记原文（`currentSessionContent()`）
+- **`main.ts`** — `createEntity` 修复：interactions 数组正确存入 `card.attributes`（之前只存了 count）
+- **`main.ts`** — `wikifyContent` 双链修复：`(?<!\[\[)` 负向前瞻防嵌套，增加已有嵌套链接清理正则
+- **`main.ts`** — `refreshWikilinks` 新增方法，在对话结束时对所有实体一次性回扫建立双链
+- **`ai-analysis-panel.ts`** — 已知实体在 `finishClarification` 中写入日记互动记录 + 回扫双链
