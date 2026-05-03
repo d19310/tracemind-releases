@@ -8,6 +8,7 @@ export interface IndexEntry {
   id: string;
   name: string;
   cardType: 'person' | 'object' | 'theme';
+  type?: string; // LifeWiki entity type alias (person/project/thing/idea/knowledge)
   subtype?: string;
   maturity: string;
   confidence: number;
@@ -15,6 +16,10 @@ export interface IndexEntry {
   aliases: string[];
   relationCount: number;
   lastUpdated: string;
+  // Extended fields for view compatibility
+  interactions?: Array<{ timestamp: string; type: string; content: string; sourceBlockId?: string }>;
+  metadata?: Record<string, unknown>;
+  relatedEntities?: Array<{ entityId: string; relation: string }>;
 }
 
 export interface EntityIndex {

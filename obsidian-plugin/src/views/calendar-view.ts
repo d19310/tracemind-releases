@@ -1,209 +1,463 @@
 /**
  * Calendar View
- * Monthly calendar with date indicators for diary entries.
- * Click a date to navigate to that day's diary.
+ * 日历视图 - 显示在右侧边栏，与 AI 分析面板并列
  */
 
-import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, setIcon, WorkspaceLeaf } from 'obsidian';
+import type TraceMindPlugin from '../main';
 
 export const VIEW_TYPE_CALENDAR = 'tracemind-calendar';
 
 interface MonthInfo {
-  year: number;
-  month: number; // 0-indexed
+	year: number;
+	month: number;
 }
 
 type DateClickCallback = (date: Date) => void;
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
-const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-
+/**
+ * CalendarView - 日历视图组件
+ * 显示月历，点击日期可以打开对应日记
+ */
 export class CalendarView extends ItemView {
-  private currentMonth: MonthInfo;
-  private onDateClickCallback: DateClickCallback | null = null;
-  private calendarContainerEl: HTMLElement | null = null;
-  // Dates that have diary entries (YYYY-MM-DD -> true)
-  private diaryDates: Set<string> = new Set();
+	private plugin: TraceMindPlugin;
+	private currentMonth: MonthInfo;
+	private onDateClickCallback: DateClickCallback | null = null;
 
-  constructor(leaf: WorkspaceLeaf) {
-    super(leaf);
-    const now = new Date();
-    this.currentMonth = { year: now.getFullYear(), month: now.getMonth() };
-  }
+	constructor(leaf: WorkspaceLeaf, plugin: TraceMindPlugin) {
+		super(leaf);
+		this.plugin = plugin;
+		this.currentMonth = {
+			year: new Date().getFullYear(),
+			month: new Date().getMonth()
+		};
+	}
 
-  getViewType(): string {
-    return VIEW_TYPE_CALENDAR;
-  }
+	getViewType(): string {
+		return VIEW_TYPE_CALENDAR;
+	}
 
-  getDisplayText(): string {
-    return '日历';
-  }
+	getDisplayText(): string {
+		return '日历';
+	}
 
-  getIcon(): string {
-    return 'calendar';
-  }
+	getIcon(): string {
+		return 'calendar';
+	}
 
-  async onOpen() {
-    const container = this.containerEl.children[1] as HTMLElement;
-    container.empty();
-    this.calendarContainerEl = container;
-    this.renderCalendar();
-  }
+	async onOpen(): Promise<void> {
+		this.renderCalendar();
+	}
 
-  async onClose() {
-    this.calendarContainerEl = null;
-  }
+	async onClose(): Promise<void> {
+		// Cleanup if needed
+	}
 
-  /**
-   * Set date click callback
-   */
-  setOnDateClick(callback: DateClickCallback): void {
-    this.onDateClickCallback = callback;
-  }
+	/**
+	 * 设置日期点击回调
+	 */
+	setOnDateClick(callback: DateClickCallback): void {
+		this.onDateClickCallback = callback;
+	}
 
-  /**
-   * Set which dates have diary entries
-   */
-  setDiaryDates(dates: string[]): void {
-    this.diaryDates = new Set(dates);
-    this.renderCalendar();
-  }
+	/**
+	 * 处理日期点击
+	 */
+	async handleDateClick(date: Date): Promise<void> {
+		if (this.onDateClickCallback) {
+			this.onDateClickCallback(date);
+		}
+	}
 
-  /**
-   * Navigate to a specific month
-   */
-  navigateTo(year: number, month: number): void {
-    this.currentMonth = { year, month };
-    this.renderCalendar();
-  }
+	/**
+	 * 获取指定月份的日历天数数组
+	 * 返回 42 个日期（6 周 x 7 天）
+	 */
+	getMonthDays(year: number, month: number): Date[] {
+		const firstDay = new Date(year, month, 1);
+		const lastDay = new Date(year, month + 1, 0);
+		const days: Date[] = [];
 
-  /**
-   * Handle date click
-   */
-  private handleDateClick(date: Date): void {
-    if (this.onDateClickCallback) {
-      this.onDateClickCallback(date);
-    }
-  }
+		// 获取星期几（0 = 周日）
+		const startDayOfWeek = firstDay.getDay();
 
-  /**
-   * Get all dates for a month (including padding from prev/next months)
-   */
-  private getMonthDays(year: number, month: number): Date[] {
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const days: Date[] = [];
+		// 添加上个月的日期来填充第一周
+		for (let i = startDayOfWeek - 1; i >= 0; i--) {
+			const prevDate = new Date(year, month, -i);
+			days.push(prevDate);
+		}
 
-    const startDayOfWeek = firstDay.getDay();
-    // Previous month padding
-    for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      days.push(new Date(year, month, -i));
-    }
-    // Current month
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-      days.push(new Date(year, month, d));
-    }
-    // Next month padding (6 weeks total)
-    const remaining = 42 - days.length;
-    for (let i = 1; i <= remaining; i++) {
-      days.push(new Date(year, month + 1, i));
-    }
-    return days;
-  }
+		// 添加当月的日期
+		for (let d = 1; d <= lastDay.getDate(); d++) {
+			days.push(new Date(year, month, d));
+		}
 
-  /**
-   * Format date as YYYY-MM-DD
-   */
-  private formatDateKey(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  }
+		// 添加下个月的日期来补满 6 周
+		const remainingDays = 42 - days.length;
+		for (let i = 1; i <= remainingDays; i++) {
+			days.push(new Date(year, month + 1, i));
+		}
 
-  /**
-   * Check if date is today
-   */
-  private isToday(date: Date): boolean {
-    const now = new Date();
-    return date.getFullYear() === now.getFullYear() &&
-           date.getMonth() === now.getMonth() &&
-           date.getDate() === now.getDate();
-  }
+		return days;
+	}
 
-  /**
-   * Render the calendar UI
-   */
-  private renderCalendar(): void {
-    if (!this.calendarContainerEl) return;
-    this.calendarContainerEl.empty();
+	/**
+	 * 判断是否是今天
+	 */
+	isToday(date: Date): boolean {
+		const today = new Date();
+		return date.getFullYear() === today.getFullYear() &&
+			date.getMonth() === today.getMonth() &&
+			date.getDate() === today.getDate();
+	}
 
-    const { year, month } = this.currentMonth;
-    const today = new Date();
+	/**
+	 * 判断是否是当前选中的月份
+	 */
+	isCurrentMonth(date: Date): boolean {
+		return date.getFullYear() === this.currentMonth.year &&
+			date.getMonth() === this.currentMonth.month;
+	}
 
-    // Header with month/year and nav buttons
-    const header = this.containerEl.createEl('div', { cls: 'tracemind-calendar-header' });
+	/**
+	 * 获取下个月的信息
+	 */
+	getNextMonth(year: number, month: number): MonthInfo {
+		if (month === 11) {
+			return { year: year + 1, month: 0 };
+		}
+		return { year, month: month + 1 };
+	}
 
-    const prevBtn = header.createEl('button', { cls: 'tracemind-calendar-nav-btn' });
-    setIcon(prevBtn, 'chevron-left');
-    prevBtn.addEventListener('click', () => {
-      const newMonth = month === 0 ? 11 : month - 1;
-      const newYear = month === 0 ? year - 1 : year;
-      this.navigateTo(newYear, newMonth);
-    });
+	/**
+	 * 获取上个月的日期
+	 */
+	getPrevMonth(year: number, month: number): MonthInfo {
+		if (month === 0) {
+			return { year: year - 1, month: 11 };
+		}
+		return { year, month: month - 1 };
+	}
 
-    header.createEl('span', {
-      text: `${year}年 ${MONTH_NAMES[month]}`,
-      cls: 'tracemind-calendar-title',
-    });
+	/**
+	 * 检查指定日期的日记是否存在
+	 */
+	async diaryExistsForDate(dateStr: string): Promise<boolean> {
+		try {
+			const filePath = `Daily/${dateStr}.md`;
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			return file !== null && file !== undefined;
+		} catch {
+			return false;
+		}
+	}
 
-    const nextBtn = header.createEl('button', { cls: 'tracemind-calendar-nav-btn' });
-    setIcon(nextBtn, 'chevron-right');
-    nextBtn.addEventListener('click', () => {
-      const newMonth = month === 11 ? 0 : month + 1;
-      const newYear = month === 11 ? year + 1 : year;
-      this.navigateTo(newYear, newMonth);
-    });
+	/**
+	 * 导航到下个月
+	 */
+	async goToNextMonth(): Promise<void> {
+		this.currentMonth = this.getNextMonth(
+			this.currentMonth.year,
+			this.currentMonth.month
+		);
+		this.renderCalendar();
+	}
 
-    // Today button
-    const todayBtn = header.createEl('button', {
-      text: '今天',
-      cls: 'tracemind-calendar-today-btn',
-    });
-    todayBtn.addEventListener('click', () => {
-      this.navigateTo(today.getFullYear(), today.getMonth());
-    });
+	/**
+	 * 导航到上个月
+	 */
+	async goToPrevMonth(): Promise<void> {
+		this.currentMonth = this.getPrevMonth(
+			this.currentMonth.year,
+			this.currentMonth.month
+		);
+		this.renderCalendar();
+	}
 
-    // Weekday headers
-    const weekdayRow = this.containerEl.createEl('div', { cls: 'tracemind-calendar-weekdays' });
-    for (const day of WEEKDAYS) {
-      weekdayRow.createEl('span', { text: day, cls: 'tracemind-calendar-weekday' });
-    }
+	/**
+	 * 导航到今天
+	 */
+	async goToToday(): Promise<void> {
+		const today = new Date();
+		this.currentMonth = {
+			year: today.getFullYear(),
+			month: today.getMonth()
+		};
+		this.renderCalendar();
+	}
 
-    // Calendar grid
-    const grid = this.containerEl.createEl('div', { cls: 'tracemind-calendar-grid' });
-    const days = this.getMonthDays(year, month);
+	/**
+	 * 渲染日历
+	 */
+	private async renderCalendar(): Promise<void> {
+		const container = this.containerEl;
+		container.empty();
 
-    for (const date of days) {
-      const dayEl = grid.createEl('div', {
-        text: String(date.getDate()),
-        cls: 'tracemind-calendar-day',
-      });
+		// 添加样式
+		this.addStyles();
 
-      const key = this.formatDateKey(date);
-      const isCurrentMonth = date.getMonth() === month;
-      const isDiaryDay = this.diaryDates.has(key);
+		// 创建日历容器
+		const calendarEl = container.createEl('div', {
+			cls: 'tracemind-calendar'
+		});
 
-      if (!isCurrentMonth) {
-        dayEl.classList.add('tracemind-calendar-day-other-month');
-      }
-      if (this.isToday(date)) {
-        dayEl.classList.add('tracemind-calendar-day-today');
-      }
-      if (isDiaryDay) {
-        dayEl.classList.add('tracemind-calendar-day-has-diary');
-      }
+		// 渲染头部（月份导航）
+		this.renderHeader(calendarEl);
 
-      dayEl.addEventListener('click', () => {
-        this.handleDateClick(date);
-      });
-    }
-  }
+		// 渲染星期标题行
+		this.renderWeekdayHeader(calendarEl);
+
+		// 渲染日期网格
+		await this.renderDays(calendarEl);
+	}
+
+	/**
+	 * 渲染月份导航头部
+	 */
+	private renderHeader(container: HTMLElement): void {
+		const header = container.createEl('div', {
+			cls: 'lifewiki-calendar-header'
+		});
+
+		// 上月按钮
+		const prevBtn = header.createEl('button', {
+			cls: 'lifewiki-calendar-nav-btn',
+			text: '‹'
+		});
+		prevBtn.addEventListener('click', () => this.goToPrevMonth());
+
+		// 月份标题
+		const monthTitle = header.createEl('span', {
+			cls: 'lifewiki-calendar-title',
+			text: this.getMonthTitle()
+		});
+		monthTitle.addEventListener('click', () => this.goToToday());
+
+		// 下月按钮
+		const nextBtn = header.createEl('button', {
+			cls: 'lifewiki-calendar-nav-btn',
+			text: '›'
+		});
+		nextBtn.addEventListener('click', () => this.goToNextMonth());
+	}
+
+	/**
+	 * 渲染星期标题行
+	 */
+	private renderWeekdayHeader(container: HTMLElement): void {
+		const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+		const header = container.createEl('div', {
+			cls: 'lifewiki-calendar-weekdays'
+		});
+
+		for (const day of weekdays) {
+			header.createEl('div', {
+				cls: 'lifewiki-calendar-weekday',
+				text: day
+			});
+		}
+	}
+
+	/**
+	 * 渲染日期网格
+	 */
+	private async renderDays(container: HTMLElement): Promise<void> {
+		const days = this.getMonthDays(
+			this.currentMonth.year,
+			this.currentMonth.month
+		);
+
+		const grid = container.createEl('div', {
+			cls: 'lifewiki-calendar-grid'
+		});
+
+		for (const date of days) {
+			const dayEl = await this.createDayElement(date, grid);
+			grid.appendChild(dayEl);
+		}
+	}
+
+	/**
+	 * 创建单个日期元素
+	 */
+	private async createDayElement(date: Date, container: HTMLElement): Promise<HTMLElement> {
+		const dayEl = container.createEl('div', {
+			cls: 'lifewiki-calendar-day'
+		});
+
+		const isCurrentMonth = this.isCurrentMonth(date);
+		const isToday = this.isToday(date);
+
+		if (!isCurrentMonth) {
+			dayEl.addClass('lifewiki-calendar-day-other-month');
+		}
+
+		if (isToday) {
+			dayEl.addClass('lifewiki-calendar-day-today');
+		}
+
+		// 检查日记是否存在
+		const dateStr = this.formatDate(date);
+		const hasDiary = await this.diaryExistsForDate(dateStr);
+		if (hasDiary) {
+			dayEl.addClass('lifewiki-calendar-day-has-diary');
+		}
+
+		// 日期数字
+		const dayNum = dayEl.createEl('span', {
+			cls: 'lifewiki-calendar-day-num',
+			text: String(date.getDate())
+		});
+
+		// 点击事件
+		dayEl.addEventListener('click', () => {
+			this.handleDateClick(date);
+		});
+
+		return dayEl;
+	}
+
+	/**
+	 * 获取月份标题
+	 */
+	private getMonthTitle(): string {
+		const monthNames = [
+			'一月', '二月', '三月', '四月', '五月', '六月',
+			'七月', '八月', '九月', '十月', '十一月', '十二月'
+		];
+		return `${this.currentMonth.year}年 ${monthNames[this.currentMonth.month]}`;
+	}
+
+	/**
+	 * 格式化日期为 YYYY-MM-DD
+	 */
+	private formatDate(date: Date): string {
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}`;
+	}
+
+	/**
+	 * 添加日历样式
+	 */
+	private addStyles(): void {
+		const styleId = 'lifewiki-calendar-styles';
+		if (document.getElementById(styleId)) return;
+
+		const style = document.createElement('style');
+		style.id = styleId;
+		style.textContent = `
+			.lifewiki-calendar {
+				padding: 12px;
+				height: 100%;
+				display: flex;
+				flex-direction: column;
+				background: var(--background-primary);
+			}
+
+			.lifewiki-calendar-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				padding: 8px 0;
+				margin-bottom: 8px;
+			}
+
+			.lifewiki-calendar-title {
+				font-size: 16px;
+				font-weight: 600;
+				cursor: pointer;
+			}
+
+			.lifewiki-calendar-nav-btn {
+				background: none;
+				border: none;
+				font-size: 20px;
+				cursor: pointer;
+				padding: 4px 12px;
+				color: var(--text-muted);
+				border-radius: 4px;
+			}
+
+			.lifewiki-calendar-nav-btn:hover {
+				background: var(--background-secondary);
+				color: var(--text-normal);
+			}
+
+			.lifewiki-calendar-weekdays {
+				display: grid;
+				grid-template-columns: repeat(7, 1fr);
+				text-align: center;
+				margin-bottom: 4px;
+			}
+
+			.lifewiki-calendar-weekday {
+				font-size: 12px;
+				color: var(--text-muted);
+				padding: 4px;
+			}
+
+			.lifewiki-calendar-grid {
+				display: grid;
+				grid-template-columns: repeat(7, 1fr);
+				gap: 0.5px;
+				max-height: 33vh;
+				overflow: hidden;
+			}
+
+			.lifewiki-calendar-day {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				cursor: pointer;
+				border-radius: 4px;
+				min-height: 24px;
+				padding: 2px;
+				position: relative;
+			}
+
+			.lifewiki-calendar-day:hover {
+				background: var(--background-secondary);
+			}
+
+			.lifewiki-calendar-day-num {
+				font-size: 11px;
+			}
+
+			.lifewiki-calendar-day-today .lifewiki-calendar-day-num {
+				background: var(--interactive-accent);
+				color: var(--text-on-accent);
+				width: 28px;
+				height: 28px;
+				border-radius: 50%;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-weight: 600;
+			}
+
+			.lifewiki-calendar-day-has-diary::after {
+				content: '';
+				position: absolute;
+				bottom: 4px;
+				width: 4px;
+				height: 4px;
+				border-radius: 50%;
+				background: var(--interactive-accent);
+			}
+
+			.lifewiki-calendar-day-other-month {
+				opacity: 0.3;
+			}
+		`;
+		document.head.appendChild(style);
+	}
+}
+
+/**
+ * 创建日历视图
+ */
+export function createCalendarView(leaf: WorkspaceLeaf, plugin: TraceMindPlugin): CalendarView {
+	return new CalendarView(leaf, plugin);
 }

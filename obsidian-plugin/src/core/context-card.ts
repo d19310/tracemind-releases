@@ -52,7 +52,11 @@ export const PERSON_P0_ATTRIBUTES = ['company', 'role', 'relationship_to_user'];
 export const PERSON_P1_ATTRIBUTES = ['responsibility', 'communicationStyle'];
 export const PERSON_P2_ATTRIBUTES = ['personality', 'preferences', 'skills'];
 export const OBJECT_P0_ATTRIBUTES = ['subtype', 'status'];
+export const OBJECT_P1_ATTRIBUTES = ['owner', 'deadline', 'description'];
+export const OBJECT_P2_ATTRIBUTES = ['priority', 'goals'];
 export const THEME_P0_ATTRIBUTES = ['subtype'];
+export const THEME_P1_ATTRIBUTES = ['frequency', 'context'];
+export const THEME_P2_ATTRIBUTES = ['goals', 'emotions'];
 
 /**
  * Valid Object subtypes with their priority levels
@@ -93,27 +97,27 @@ export const PRIORITY_WEIGHTS = { P0: 1.5, P1: 1.0, P2: 0.5 };
  */
 export const ATTRIBUTE_PRIORITY: Record<CardType, { p0: string[]; p1: string[]; p2: string[] }> = {
   person: { p0: PERSON_P0_ATTRIBUTES, p1: PERSON_P1_ATTRIBUTES, p2: PERSON_P2_ATTRIBUTES },
-  object: { p0: OBJECT_P0_ATTRIBUTES, p1: [], p2: [] },
-  theme: { p0: THEME_P0_ATTRIBUTES, p1: [], p2: [] },
+  object: { p0: OBJECT_P0_ATTRIBUTES, p1: OBJECT_P1_ATTRIBUTES, p2: OBJECT_P2_ATTRIBUTES },
+  theme: { p0: THEME_P0_ATTRIBUTES, p1: THEME_P1_ATTRIBUTES, p2: THEME_P2_ATTRIBUTES },
 };
 
 /**
  * Calculate maturity level based on which attributes are filled
+ *
+ * L0: No P0 attributes filled
+ * L1: All P0 attributes filled
+ * L2: All P0 filled + at least one P1 attribute filled
+ * L3: All P0 filled + at least one P1 + at least one P2 attribute filled
  */
 export function calculateMaturity(cardType: CardType, attributes: Record<string, unknown>): MaturityLevel {
   const priority = ATTRIBUTE_PRIORITY[cardType];
 
-  const hasP1 = priority.p1.length > 0;
-  const hasP2 = priority.p2.length > 0;
+  const p0Filled = priority.p0.length === 0 || priority.p0.every(attr => attributes[attr] != null);
+  const anyP1Filled = priority.p1.some(attr => attributes[attr] != null);
+  const anyP2Filled = priority.p2.some(attr => attributes[attr] != null);
 
-  const p0Filled = priority.p0.every(attr => attributes[attr] != null);
-  const p1Filled = hasP1 && priority.p1.every(attr => attributes[attr] != null);
-  const p2Filled = hasP2 && priority.p2.every(attr => attributes[attr] != null);
-
-  // Only reach L3 if P1 and P2 actually exist AND are filled
-  if (p0Filled && hasP1 && p1Filled && hasP2 && p2Filled) return 'L3';
-  // Only reach L2 if P1 actually exists AND is filled (plus P0)
-  if (p0Filled && hasP1 && p1Filled) return 'L2';
+  if (p0Filled && anyP1Filled && anyP2Filled) return 'L3';
+  if (p0Filled && anyP1Filled) return 'L2';
   if (p0Filled) return 'L1';
   return 'L0';
 }

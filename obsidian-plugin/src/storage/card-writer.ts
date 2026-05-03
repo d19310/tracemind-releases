@@ -3,8 +3,9 @@
  * Handles frontmatter updates, body content, and wikilink relations.
  */
 
-import { ContextCard } from '../core/context-card';
-import { cardToMarkdown } from './markdown-card';
+import { App } from 'obsidian';
+import { ContextCard, CardType } from '../core/context-card';
+import { cardToMarkdown, parseCardMarkdown } from './markdown-card';
 
 /**
  * Build full markdown for a new context card
@@ -32,4 +33,87 @@ export function parseWikilinks(text: string): string[] {
     links.push(match[1]);
   }
   return links;
+}
+
+/**
+ * Get the vault folder for a card type.
+ */
+export function getCardFolder(cardType: CardType): string {
+  switch (cardType) {
+    case 'person': return 'Person/';
+    case 'object': return 'Object/';
+    case 'theme': return 'Theme/';
+    default: return '';
+  }
+}
+
+/**
+ * Sanitize a file name for vault storage.
+ */
+export function sanitizeFileName(name: string): string {
+  return name.replace(/[\\/<>:"|?*]/g, '_').trim();
+}
+
+/**
+ * Convert a card name to a vault file path.
+ */
+export function cardToVaultPath(name: string, cardType: CardType): string {
+  return `${getCardFolder(cardType)}${sanitizeFileName(name) || 'unnamed'}.md`;
+}
+
+/**
+ * Check if a card already exists in the vault.
+ */
+export function cardExists(filePaths: Set<string>, name: string, cardType: CardType): boolean {
+  const path = cardToVaultPath(name, cardType);
+  return filePaths.has(path);
+}
+
+/**
+ * Read a Context Card from the vault.
+ */
+export async function readCardFromVault(
+  app: App,
+  name: string,
+  cardType: CardType,
+): Promise<ContextCard | null> {
+  const path = cardToVaultPath(name, cardType);
+  const file = app.vault.getFileByPath(path);
+  if (!file) return null;
+
+  try {
+    const content = await app.vault.read(file);
+    return parseCardMarkdown(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Upsert a Context Card in the vault.
+ * Creates if doesn't exist, updates if it does.
+ * Handles file rename if the card name changed.
+ */
+export async function upsertCard(
+  app: App,
+  card: ContextCard,
+  oldName?: string,
+): Promise<void> {
+  // If name changed, delete old file
+  if (oldName && oldName !== card.name) {
+    const oldPath = cardToVaultPath(oldName, card.cardType);
+    const oldFile = app.vault.getFileByPath(oldPath);
+    if (oldFile) {
+      await app.vault.delete(oldFile);
+    }
+  }
+
+  const path = cardToVaultPath(card.name, card.cardType);
+  const md = cardToMarkdown(card);
+  const existing = app.vault.getFileByPath(path);
+  if (existing) {
+    await app.vault.modify(existing, md);
+  } else {
+    await app.vault.create(path, md);
+  }
 }

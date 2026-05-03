@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# TraceMind v1.0 installer
+# TraceMind v2.1 installer
 # Creates or updates an Obsidian vault and installs the TraceMind plugin.
 #
 
@@ -14,9 +14,9 @@ NC='\033[0m'
 
 PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
-VERSION="v1.0.0"
-GITHUB_REPO=""  # 待定
-DEFAULT_VAULT_NAME="TraceMindVault"
+VERSION="v2.1"
+GITHUB_REPO="d19310/lifewiki"
+DEFAULT_VAULT_NAME="TraceMind"
 VAULT_PARENT_DIR="$HOME/Documents"
 VAULT_NAME="$DEFAULT_VAULT_NAME"
 VAULT_PATH=""
@@ -31,7 +31,7 @@ log_step() { echo -e "${BLUE}==>${NC} $1"; }
 
 usage() {
 	cat <<EOF
-TraceMind v1.0 安装脚本
+TraceMind v2.1 安装脚本
 
 用法:
   ./install.sh [选项]
@@ -40,18 +40,20 @@ TraceMind v1.0 安装脚本
   -n, --name <名称>       Vault 名称，默认: ${DEFAULT_VAULT_NAME}
   -p, --parent <路径>     Vault 父目录，默认: ${VAULT_PARENT_DIR}
   -v, --vault <路径>      直接指定 Vault 完整路径
+  -t, --tag <tag>         Release tag，默认: ${VERSION}
   -l, --local             使用当前目录本地构建产物安装
   --no-open               安装完成后不自动打开 Obsidian
   -h, --help              显示帮助
 
 示例:
   ./install.sh
-  ./install.sh -n "MyVault"
-  ./install.sh -v "\$HOME/Obsidian/TraceMindVault"
+  ./install.sh -n "MyTraceMind"
+  ./install.sh -v "\$HOME/Obsidian/TraceMind"
   ./install.sh -l -v "\$HOME/test-tracemind-vault"
 
 说明:
-  默认从 GitHub Release 下载 main.js、manifest.json、styles.css。
+  -l 本地模式：从当前目录构建并复制 main.js、manifest.json、styles.css。
+  默认模式：从 GitHub Release 下载预构建文件。
   插件安装目录为 .obsidian/plugins/${PLUGIN_ID}。
 EOF
 }
@@ -80,6 +82,10 @@ while [[ $# -gt 0 ]]; do
 			;;
 		-v|--vault)
 			VAULT_PATH="$(expand_path "$2")"
+			shift 2
+			;;
+		-t|--tag)
+			VERSION="$2"
 			shift 2
 			;;
 		-l|--local)
@@ -117,7 +123,7 @@ check_system() {
 	fi
 
 	if [[ "$OSTYPE" == "darwin"* ]] && [[ ! -d "/Applications/Obsidian.app" ]]; then
-		log_warn "未找到 Obsidian。你可以之后手动打开 vault。"
+		log_warn "未在 /Applications 找到 Obsidian。安装仍会继续，你可以之后手动打开 vault。"
 	fi
 
 	log_info "环境检查完成"
@@ -126,19 +132,17 @@ check_system() {
 confirm_install() {
 	echo ""
 	echo "========================================"
-	echo "       TraceMind v1.0 安装确认"
+	echo "       TraceMind v2.1 安装确认"
 	echo "========================================"
 	echo ""
 	echo "Vault: ${VAULT_PATH}"
 	echo "插件目录: ${PLUGIN_DIR}"
 	echo "安装来源: $([[ "$USE_LOCAL" == true ]] && echo "本地构建产物" || echo "GitHub Release")"
 	echo ""
-	if [[ -t 0 ]]; then
-		read -r -p "确认开始安装? (y/n) " reply
-		if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-			log_info "安装取消"
-			exit 0
-		fi
+	read -r -p "确认开始安装? (y/n) " reply
+	if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+		log_info "安装取消"
+		exit 0
 	fi
 }
 
@@ -149,14 +153,22 @@ create_vault_structure() {
 	mkdir -p "$PLUGIN_DIR"
 	mkdir -p "${VAULT_PATH}/.obsidian"
 
+	# TraceMind Context Card entity folders
 	mkdir -p "${VAULT_PATH}/Daily"
 	mkdir -p "${VAULT_PATH}/Person"
 	mkdir -p "${VAULT_PATH}/Object"
 	mkdir -p "${VAULT_PATH}/Theme"
+
+	# TraceMind sessions & index
 	mkdir -p "${VAULT_PATH}/TraceMind/sessions"
 	mkdir -p "${VAULT_PATH}/TraceMind/index"
-	mkdir -p "${VAULT_PATH}/TraceMind/agents"
-	mkdir -p "${VAULT_PATH}/TraceMind/skills"
+
+	# .lifewiki config (AI agent skills, templates)
+	mkdir -p "${VAULT_PATH}/.lifewiki/index"
+	mkdir -p "${VAULT_PATH}/.lifewiki/sessions"
+	mkdir -p "${VAULT_PATH}/.lifewiki/agents"
+	mkdir -p "${VAULT_PATH}/.lifewiki/skills"
+	mkdir -p "${VAULT_PATH}/.lifewiki/templates"
 
 	local today
 	today="$(date +%Y-%m-%d)"
@@ -173,50 +185,6 @@ tags:
 ## 日记
 
 EOF
-		log_info "创建今日日记: Daily/${today}.md"
-	fi
-
-	# PROFILE.md 模板
-	if [[ ! -f "${VAULT_PATH}/TraceMind/PROFILE.md" ]]; then
-		cat > "${VAULT_PATH}/TraceMind/PROFILE.md" <<'EOF'
-# 用户画像
-
-> 完善此文件可帮助 AI 更准确地分析你的日记内容。
-> 请根据实际情况填写，留空即可。
-
-## 基本信息
-
-- 姓名：
-- 年龄：
-- 性别：
-- 所在城市：
-- 语言偏好：中文
-
-## 职业背景
-
-- 行业：
-- 职位：
-- 工作年限：
-- 主要技能：
-
-## 社交关系
-
-- 常用称呼：
-- 重要联系人：
-
-## 工作模式
-
-- 工作时间：
-- 常用工具：
-- 沟通偏好：
-
-## 兴趣爱好
-
-- 爱好：
-- 关注领域：
-
-EOF
-		log_info "创建 PROFILE.md 模板"
 	fi
 
 	log_info "Vault 目录结构已准备"
@@ -224,39 +192,52 @@ EOF
 
 copy_local_defaults() {
 	if [[ -d "${SCRIPT_DIR}/.lifewiki" ]]; then
-		cp -R "${SCRIPT_DIR}/.lifewiki/." "${VAULT_PATH}/TraceMind/"
+		cp -R "${SCRIPT_DIR}/.lifewiki/." "${VAULT_PATH}/.lifewiki/"
 		log_info "已复制默认 Agent/Skill 配置"
 	fi
+}
+
+download_release_source_defaults() {
+	local tmp_dir archive source_dir
+	tmp_dir="$(mktemp -d)"
+	archive="${tmp_dir}/source.tar.gz"
+
+	if curl -fsSL "https://codeload.github.com/${GITHUB_REPO}/tar.gz/refs/tags/${VERSION}" -o "$archive"; then
+		tar -xzf "$archive" -C "$tmp_dir"
+		source_dir="$(find "$tmp_dir" -maxdepth 1 -type d -name '*-*' | head -n 1)"
+		if [[ -n "$source_dir" && -d "${source_dir}/.lifewiki" ]]; then
+			cp -R "${source_dir}/.lifewiki/." "${VAULT_PATH}/.lifewiki/"
+			log_info "已安装默认 Agent/Skill 配置"
+		else
+			log_warn "Release 源码中未找到 .lifewiki 默认配置，已保留空目录"
+		fi
+	else
+		log_warn "默认配置下载失败，插件仍可安装；首次使用时会创建必要数据"
+	fi
+
+	rm -rf "$tmp_dir"
 }
 
 install_plugin_local() {
 	log_step "安装本地插件文件"
 
-	# 从脚本所在目录的 obsidian-plugin/ 查找构建产物
-	local build_dir=""
-	for path in \
-		"${SCRIPT_DIR}/obsidian-plugin" \
-		"${SCRIPT_DIR}"; do
-		if [[ -f "${path}/main.js" && -f "${path}/manifest.json" ]]; then
-			build_dir="$path"
-			break
-		fi
-	done
+	cd "$SCRIPT_DIR"
+	npm install --silent 2>/dev/null || true
+	npm run build
 
-	[[ -n "$build_dir" ]] || { log_error "未找到构建产物，请先运行 npm run build"; exit 1; }
+	[[ -f "${SCRIPT_DIR}/main.js" ]] || { log_error "缺少 ${SCRIPT_DIR}/main.js，请先运行 npm run build"; exit 1; }
+	[[ -f "${SCRIPT_DIR}/manifest.json" ]] || { log_error "缺少 manifest.json"; exit 1; }
 
-	cp "${build_dir}/main.js" "${PLUGIN_DIR}/main.js"
-	cp "${build_dir}/manifest.json" "${PLUGIN_DIR}/manifest.json"
+	cp "${SCRIPT_DIR}/main.js" "${PLUGIN_DIR}/main.js"
+	cp "${SCRIPT_DIR}/manifest.json" "${PLUGIN_DIR}/manifest.json"
 
-	if [[ -f "${build_dir}/styles.css" ]]; then
-		cp "${build_dir}/styles.css" "${PLUGIN_DIR}/styles.css"
-	elif [[ -f "${build_dir}/main.css" ]]; then
-		cp "${build_dir}/main.css" "${PLUGIN_DIR}/styles.css"
+	if [[ -f "${SCRIPT_DIR}/styles.css" ]]; then
+		cp "${SCRIPT_DIR}/styles.css" "${PLUGIN_DIR}/styles.css"
+	elif [[ -f "${SCRIPT_DIR}/main.css" ]]; then
+		cp "${SCRIPT_DIR}/main.css" "${PLUGIN_DIR}/styles.css"
 	fi
 
 	copy_local_defaults
-
-	log_info "本地插件文件安装完成"
 }
 
 download_asset() {
@@ -267,20 +248,20 @@ download_asset() {
 }
 
 install_plugin_from_release() {
-	if [[ -z "$GITHUB_REPO" ]]; then
-		log_warn "GitHub Release 地址未配置，回退到本地安装"
-		install_plugin_local
-		return
-	fi
-
 	log_step "从 GitHub Release 安装插件"
 
-	download_asset "main.js" "${PLUGIN_DIR}/main.js" || { log_error "main.js 下载失败"; exit 1; }
-	download_asset "manifest.json" "${PLUGIN_DIR}/manifest.json" || { log_error "manifest.json 下载失败"; exit 1; }
+	if ! download_asset "main.js" "${PLUGIN_DIR}/main.js"; then
+		log_error "main.js 下载失败"; exit 1
+	fi
+	if ! download_asset "manifest.json" "${PLUGIN_DIR}/manifest.json"; then
+		log_error "manifest.json 下载失败"; exit 1
+	fi
 
 	if ! download_asset "styles.css" "${PLUGIN_DIR}/styles.css"; then
 		log_warn "styles.css 下载失败，继续安装无样式版本"
 	fi
+
+	download_release_source_defaults
 }
 
 enable_plugin_if_safe() {
@@ -295,38 +276,30 @@ enable_plugin_if_safe() {
 	if grep -q "\"${PLUGIN_ID}\"" "$plugins_file"; then
 		log_info "TraceMind 已在社区插件列表中"
 	else
-		log_warn "检测到已有社区插件配置。请在 Obsidian 中手动启用 TraceMind。"
+		log_warn "检测到已有社区插件配置。为避免破坏配置，请在 Obsidian 中手动启用 TraceMind。"
 	fi
 }
 
 show_completion() {
 	echo ""
 	echo "========================================"
-	log_info "TraceMind v1.0 安装完成"
+	log_info "TraceMind v2.1 安装完成"
 	echo "========================================"
 	echo ""
 	echo "Vault: ${VAULT_PATH}"
 	echo "插件: ${PLUGIN_DIR}"
 	echo ""
-	echo "目录结构:"
-	echo "  Daily/      - 日记文件（按日期）"
-	echo "  Person/     - 人物实体卡片"
-	echo "  Object/     - 对象实体卡片（项目、任务、产品等）"
-	echo "  Theme/      - 主题实体卡片（领域、习惯、状态等）"
-	echo "  TraceMind/  - TraceMind 内部数据（sessions、index、agents、skills）"
-	echo ""
 	echo "下一步:"
 	echo "1. 打开 Obsidian vault"
 	echo "2. 如未自动启用：设置 → 社区插件 → TraceMind → 启用"
 	echo "3. 打开 TraceMind 设置，配置 AI Provider"
-	echo "4. 补充 TraceMind/PROFILE.md 中的用户信息"
 	echo ""
 }
 
 main() {
 	echo ""
 	echo "========================================"
-	echo "       TraceMind v1.0 安装向导"
+	echo "       TraceMind v2.1 安装向导"
 	echo "========================================"
 
 	check_system

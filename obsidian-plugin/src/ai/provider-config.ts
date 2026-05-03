@@ -106,6 +106,28 @@ export function buildRequest(
 }
 
 /**
+ * Send chat messages to the given AI provider config
+ */
+export async function chat(
+  messages: ChatMessage[],
+  config: AiProviderConfig,
+): Promise<{ content: string }> {
+  const req = buildRequest(config, messages);
+  const res = await fetch(req.url, {
+    method: req.method || 'POST',
+    headers: req.headers,
+    body: req.body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  const body = (await res.json()) as Record<string, unknown>;
+  const msg = parseResponse(config.provider, body);
+  return { content: msg.content };
+}
+
+/**
  * Parse AI response from the given provider into a ChatMessage
  */
 export function parseResponse(

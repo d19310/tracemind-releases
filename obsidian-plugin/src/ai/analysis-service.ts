@@ -5,6 +5,7 @@
  */
 
 import { extractEntities, ExtractedEntity } from './entity-extractor';
+import { extractEntitiesWithLLM, LLMExtractedEntity } from './llm-entity-extractor';
 import { ContextCard, calculateMaturity, calculatePriorityScore, CardType } from '../core/context-card';
 import { KnowledgeGap, detectKnowledgeGaps } from '../core/knowledge-gap';
 
@@ -24,6 +25,18 @@ export interface AnalysisResult {
   hasClarifications: boolean;
   gapCount: number;
   firstQuestion?: string;
+}
+
+/**
+ * Maximum number of entities per block analysis.
+ * Prevents noise and keeps the confirmation UI manageable.
+ */
+export const MAX_ENTITIES_PER_BLOCK = 5;
+
+export interface LLMConfig {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
 }
 
 /**
@@ -134,14 +147,16 @@ export class AnalysisService {
       return b.priorityScore - a.priorityScore;
     });
 
-    const allGaps = analyzed.flatMap(e => e.knowledgeGaps ?? []);
+    // Cap entities to MAX_ENTITIES_PER_BLOCK
+    const capped = analyzed.slice(0, MAX_ENTITIES_PER_BLOCK);
+    const allGaps = capped.flatMap(e => e.knowledgeGaps ?? []);
     const firstGap = allGaps.sort((a, b) => b.score - a.score)[0];
 
     return {
-      entities: analyzed,
-      newEntities: analyzed.filter(e => e.isNew),
-      existingEntities: analyzed.filter(e => !e.isNew),
-      hasClarifications: analyzed.some(e => e.isNew),
+      entities: capped,
+      newEntities: capped.filter(e => e.isNew),
+      existingEntities: capped.filter(e => !e.isNew),
+      hasClarifications: capped.some(e => e.isNew),
       gapCount: allGaps.length,
       firstQuestion: firstGap ? gapToQuestion(firstGap) : undefined,
     };
@@ -173,4 +188,128 @@ export class AnalysisService {
 
     return parts.join('\n');
   }
+
+  /**
+   * Async analysis entry point using LLM extraction.
+   * Falls back to rule-based extraction if LLM is unavailable.
+   * Merges results from both sources, preferring LLM confidence scores.
+   */
+  static async analyzeBlockAsync(
+    diaryText: string,
+    existingCards: Map<string, { name: string; cardType: CardType; maturity: string }>,
+    llmConfig?: LLMConfig | null,
+  ): Promise<AnalysisResult> {
+    // Run rule-based extraction first (fast, reliable)
+    const ruleEntities = extractEntities(diaryText, new Map());
+    const ruleNames = new Set(ruleEntities.map(e => e.name.toLowerCase()));
+
+    // Run LLM extraction if configured
+    let llmEntities: LLMExtractedEntity[] = [];
+    if (llmConfig && llmConfig.apiKey && llmConfig.baseUrl && llmConfig.model) {
+      try {
+        llmEntities = await extractEntitiesWithLLM(diaryText, llmConfig);
+      } catch (e) {
+        console.warn('TraceMind: LLM extraction failed, using rule-based only', e);
+      }
+    }
+
+    // Merge: keep all rule entities, add LLM-only entities
+    const merged = [...ruleEntities];
+    for (const llm of llmEntities) {
+      if (!ruleNames.has(llm.name.toLowerCase())) {
+        merged.push({ ...llm, confidence: llm.confidence });
+      }
+    }
+
+    // Deduplicate by name (prefer LLM confidence if available)
+    const deduped = deduplicateEntities(merged);
+
+    // Analyze merged entities through the same pipeline
+    return analyzeEntities(deduped, existingCards);
+  }
+}
+
+/**
+ * Merge entities from multiple sources, deduplicating by name.
+ */
+function deduplicateEntities(entities: ExtractedEntity[]): ExtractedEntity[] {
+  const seen = new Map<string, ExtractedEntity>();
+  for (const entity of entities) {
+    const key = entity.name.toLowerCase();
+    const existing = seen.get(key);
+    if (!existing || (entity.confidence ?? 0) > (existing.confidence ?? 0)) {
+      seen.set(key, entity);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+/**
+ * Run the analysis pipeline on a set of extracted entities.
+ * Shared between sync analyzeBlock and async analyzeBlockAsync.
+ */
+function analyzeEntities(
+  entities: ExtractedEntity[],
+  existingCards: Map<string, { name: string; cardType: CardType; maturity: string }>,
+): AnalysisResult {
+  const analyzed: AnalyzedEntity[] = [];
+
+  for (const entity of entities) {
+    const existing = findExistingEntity(entity, existingCards);
+    const attributes = entity.subtype ? { subtype: entity.subtype } : {};
+    const maturity = existing?.maturity ?? calculateMaturity(entity.type, attributes);
+    const priorityScore = calculatePriorityScore(entity.type, attributes, 0);
+
+    // Detect knowledge gaps
+    const gaps: KnowledgeGap[] = [];
+    if (existing) {
+      const cardGaps = detectKnowledgeGaps(entity.type, maturity as 'L0' | 'L1' | 'L2' | 'L3', attributes, []);
+      gaps.push(...cardGaps);
+    } else {
+      gaps.push({
+        type: 'new_entity',
+        entityName: entity.name,
+        entityType: entity.type,
+        maturityLevel: 'L0',
+        attributePriority: 'P0',
+        score: 40,
+        description: `New entity: ${entity.name}`,
+      });
+      const cardGaps = detectKnowledgeGaps(entity.type, 'L0', attributes, []);
+      gaps.push(...cardGaps);
+    }
+
+    const questions = gaps.slice(0, 2).map(gapToQuestion);
+
+    const analyzedEntity: AnalyzedEntity = {
+      ...entity,
+      isNew: !existing,
+      existingCardId: existing?.cardId,
+      maturity,
+      priorityScore,
+      clarificationQuestions: questions,
+      knowledgeGaps: gaps,
+    };
+    analyzed.push(analyzedEntity);
+  }
+
+  // Sort by priority: new first, then by priority score descending
+  analyzed.sort((a, b) => {
+    if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+    return b.priorityScore - a.priorityScore;
+  });
+
+  // Cap entities to MAX_ENTITIES_PER_BLOCK
+  const capped = analyzed.slice(0, MAX_ENTITIES_PER_BLOCK);
+  const allGaps = capped.flatMap(e => e.knowledgeGaps ?? []);
+  const firstGap = allGaps.sort((a, b) => b.score - a.score)[0];
+
+  return {
+    entities: capped,
+    newEntities: capped.filter(e => e.isNew),
+    existingEntities: capped.filter(e => !e.isNew),
+    hasClarifications: capped.some(e => e.isNew),
+    gapCount: allGaps.length,
+    firstQuestion: firstGap ? gapToQuestion(firstGap) : undefined,
+  };
 }
