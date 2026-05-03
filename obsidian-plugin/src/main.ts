@@ -24,6 +24,7 @@ import { saveSession, loadSession, ChatMessage } from './storage/session-store';
 import type { BlockSession, ChatSession } from './entities/types';
 import { AnalysisPhase } from './entities/types';
 import { isFirstStart, showFirstStartWizard } from './core/first-start';
+import { loadEntityTypeConfig } from './ai/entity-type-config';
 
 /**
  * Directory structure for TraceMind vault
@@ -65,6 +66,15 @@ export class TraceMindPlugin extends Plugin {
       await this.ensureVaultStructure();
       await this.rebuildEntityIndex();
       this.userProfile = await loadProfile(this.app);
+
+      // Load entity type config from vault (or create default)
+      await loadEntityTypeConfig(
+        (path: string) => this.app.vault.adapter.read(path),
+        async (path: string, content: string) => {
+          await ensureFolder(this.app, 'TraceMind');
+          await this.app.vault.create(path, content);
+        },
+      );
 
       // Initialize adapters with real I/O
       this.entityManager = new EntityManagerAdapter(this.app, this);
@@ -557,20 +567,37 @@ class EntityManagerAdapter {
   private wikifyContent(text: string): string {
     let result = text;
 
-    // First pass: fix already-broken nested wikilinks like [[Person/[[Person/name|name]]|name]]
-    result = result.replace(/\[\[(Person|Object|Theme)\/(?:\[\[(Person|Object|Theme)\/[^\]]+\]\])\|([^\]]+)\]\]/g, '[[$1/$3|$3]]');
+    // First pass: fix already-broken nested wikilinks
+    result = result.replace(/\[\[(Person|Object|Theme)\/(?:\[\[(?:Person|Object|Theme)\/[^\]]+\]\])\|([^\]]+)\]\]/g, '[[$1/$2|$2]]');
 
     const entries = this.plugin.entityIndex.entries;
     const sorted = [...entries].sort((a, b) => b.name.length - a.name.length);
-    for (const entry of sorted) {
-      if (entry.name.length < 2) continue;
-      // Skip if already inside wikilink
-      const escapedName = entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (!new RegExp('(?<!\\[\\[)' + escapedName + '(?!\\]\\])').test(result)) continue;
 
+    // Build a list of all search terms: names + aliases
+    const searchTerms: Array<{ term: string; name: string; folder: string }> = [];
+    for (const entry of sorted) {
       const folder = entry.cardType === 'person' ? 'Person' : entry.cardType === 'object' ? 'Object' : 'Theme';
-      const link = '[[' + folder + '/' + entry.name + '|' + entry.name + ']]';
-      const regex = new RegExp('(?<!\\[\\[)' + escapedName + '(?!\\]\\])', 'g');
+      // Add primary name
+      if (entry.name.length >= 2) {
+        searchTerms.push({ term: entry.name, name: entry.name, folder });
+      }
+      // Add aliases
+      for (const alias of entry.aliases || []) {
+        if (alias.length >= 2) {
+          searchTerms.push({ term: alias, name: entry.name, folder });
+        }
+      }
+    }
+    // Sort by term length descending for longest match first
+    searchTerms.sort((a, b) => b.term.length - a.term.length);
+
+    for (const st of searchTerms) {
+      // Skip if already inside wikilink
+      const escapedTerm = st.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!new RegExp('(?<!\\[\\[)' + escapedTerm + '(?!\\]\\|)').test(result)) continue;
+
+      const link = '[[' + st.folder + '/' + st.name + '|' + st.term + ']]';
+      const regex = new RegExp('(?<!\\[\\[)' + escapedTerm + '(?!\\]\\|)', 'g');
       result = result.replace(regex, link);
     }
     return result;

@@ -2378,7 +2378,6 @@ export class BlockEditorView extends ItemView {
 		// For child blocks, use parent's session
 		const effectiveParentId = (block as any).parentId || null;
 
-		// For child blocks, always trigger new AI analysis (skip history check)
 		// For parent blocks, check if session already has history
 		if (!effectiveParentId) {
 			const existingSession = sessionManager.getSession(block.id, effectiveParentId);
@@ -2423,11 +2422,9 @@ export class BlockEditorView extends ItemView {
 			const persistedSession = sessionManager.setSession(block.id, result, effectiveParentId);
 			console.log('[TraceMind] block-editor: persistedSession:', persistedSession);
 
-			// Notify AI panel - use parent's content if child block
+			// Notify AI panel - use child's own content for child blocks
 			if (aiView) {
-				const displayContent = effectiveParentId
-					? this.blocks.find(b => b.id === effectiveParentId)?.content || block.content
-					: block.content;
+				const displayContent = block.content;
 				console.log('[TraceMind] block-editor: calling showAgentSession');
 				if (persistedSession) {
 					aiView.showAgentSession(block.id, displayContent, persistedSession, effectiveParentId);

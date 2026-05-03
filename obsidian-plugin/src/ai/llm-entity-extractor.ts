@@ -4,6 +4,7 @@
  */
 
 import { CardType } from '../core/context-card';
+import { buildExtractionTypeGuide } from './entity-type-config';
 
 export interface LLMExtractedEntity {
   name: string;
@@ -30,7 +31,7 @@ export function buildExtractionPrompt(diaryText: string, profileContext?: string
 返回一个 JSON 对象，包含 "entities" 数组。每个实体必须有：
 - "name": 实体名称（字符串，必填）
 - "type": 以下之一："person"（人物）、"object"（客体）、"theme"（主题）（必填）
-- "subtype": 客体可选值：project、task、product、technology、document、location、other（可选）
+- "subtype": 客体和主题的细分类型（可选，见下方规则）
 - "confidence": 0.0 到 1.0 之间的数字（可选，默认 0.5）
 
 什么是命名实体（必须同时满足）：
@@ -48,11 +49,10 @@ export function buildExtractionPrompt(diaryText: string, profileContext?: string
 重要规则：
 - **宁缺毋滥**：如果拿不准，就不要提取。confidence 低于 0.6 的不要加入。
 - **最多提取 5 个实体**：优先提取最具体、最重要的。
-- **theme 谨慎但不要遗漏**：满足以下任意一条即可提取：
-  1. 日记中明确出现了可能反复发生的话题、状态、习惯、待决定事项
-  2. 虽然不是具体的人或物，但值得持续跟踪的约束条件或业务状态
-  3. 命名要像一个"主题标签"而非事件描述：如"H200供货紧张" ✅，"昨天讨论了H200供货" ❌
-- **object 必须有具体名称**：如产品型号、项目名称、文档标题等具体的东西`;
+- **theme 谨慎但不要遗漏**：命名要像一个"主题标签"而非事件描述：如"H200供货紧张" ✅
+- **object 必须有具体名称**：如产品型号、项目名称、文档标题等
+
+${buildExtractionTypeGuide()}`;
 
   if (profileContext) {
     // profileContext may contain user profile and/or known entity list
@@ -68,6 +68,7 @@ export function buildExtractionPrompt(diaryText: string, profileContext?: string
   "entities": [
     { "name": "张三", "type": "person", "confidence": 0.9 },
     { "name": "Q2计划", "type": "object", "subtype": "project", "confidence": 0.8 },
+    { "name": "Q2竞品分析报告", "type": "object", "subtype": "task", "confidence": 0.7 },
     { "name": "远程工作", "type": "theme", "confidence": 0.7 },
     { "name": "H200供货紧张", "type": "theme", "confidence": 0.65 }
   ]

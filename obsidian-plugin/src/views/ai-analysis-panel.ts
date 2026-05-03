@@ -10,6 +10,8 @@ import { AnalysisResult, BlockSession, ChatMessage, EntityPreview, PanelMode, Pa
 import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './block-editor';
 import { CardType, MaturityLevel } from '../core/context-card';
 import type { AnalyzedEntity } from '../ai/analysis-service';
+import { parseChatResponse, type ChatAction } from '../ai/chat-action-parser';
+import { buildClarificationAttributeGuide } from '../ai/entity-type-config';
 
 export const VIEW_TYPE_AI_ANALYSIS = 'tracemind-ai-analysis';
 
@@ -1148,7 +1150,14 @@ export class AIAnalysisPanelView extends ItemView {
 
 	public switchToChatMode() {
 		this.mode = 'chat';
+		// Isolate from analysis: clear all analysis state
 		this.activeBlockId = null;
+		this.activeParentId = null;
+		this.clarificationPhase = 'summary';
+		this.clarificationQueue = [];
+		this.knownEntities = [];
+		this.allSessionEntities = [];
+		this.currentEntityIndex = 0;
 		this.entityIndexEl?.removeClass('visible');
 		this.analysisTabsEl?.removeClass('visible');
 		this.blockInsightsEl?.removeClass('visible');
@@ -1447,7 +1456,7 @@ export class AIAnalysisPanelView extends ItemView {
 		}
 
 		// Re-wikify all interactions now that all entities are in the index
-		if (this.allSessionEntities.length >= 2) {
+		if (this.allSessionEntities.length >= 1) {
 			const entityManager = this.plugin.getEntityManager();
 			for (const e of this.allSessionEntities) {
 				const entry = entityManager.findEntity(e.name);
@@ -2209,9 +2218,7 @@ export class AIAnalysisPanelView extends ItemView {
 			'\u8BF7\u4ECE\u7528\u6237\u56DE\u7B54\u4E2D\u63D0\u53D6\u5173\u952E\u5C5E\u6027\u4FE1\u606F\u3002',
 			'',
 			'\u5F53\u524D\u5B9E\u4F53\u7C7B\u578B\u662F ' + entity.type + '\uFF0C\u53EF\u7528\u7684\u5C5E\u6027\u540D\u4E3A\uFF1A',
-			entity.type === 'person' ? '- company\uFF08\u516C\u53F8/\u7EC4\u7EC7\uFF09\u3001role\uFF08\u804C\u4F4D/\u89D2\u8272\uFF09\u3001relationship_to_user\uFF08\u4E0E\u7528\u6237\u7684\u5173\u7CFB\uFF09\u3001responsibility\uFF08\u804C\u8D23\uFF09\u3001aliases\uFF08\u522B\u540D/\u6635\u79F0\uFF0C\u7528\u9017\u53F7\u5206\u9694\u591A\u4E2A\u522B\u540D\uFF09'
-				: entity.type === 'object' ? '- subtype\uFF08project/task/product/technology/document/location/other\uFF09\u3001status\uFF08\u72B6\u6001\uFF09\u3001deadline\uFF08\u622A\u6B62\u65E5\u671F\uFF09'
-				: '- subtype\uFF08domain/habit/state/pending_decision\uFF09\u3001occurrenceCount\uFF08\u51FA\u73B0\u6B21\u6570\uFF09',
+			buildClarificationAttributeGuide(entity.type),
 			'',
 			'=== \u91CD\u8981\uFF1Aattributes \u5FC5\u987B\u662F\u5E73\u94FA\u7684 key-value\uFF0C\u4E0D\u8981\u5D4C\u5957===',
 			'\u9519\u8BEF\u793A\u4F8B\uFF1A{ "person": { "company": "xxx" } }',
@@ -2391,6 +2398,170 @@ export class AIAnalysisPanelView extends ItemView {
 		};
 	}
 
+	/**
+	 * Execute parsed chat actions against the vault.
+	 */
+	private async executeChatActions(actions: ChatAction[]): Promise<string[]> {
+		const results: string[] = [];
+		const entityManager = this.plugin.getEntityManager();
+
+		for (const action of actions) {
+			try {
+				switch (action.action) {
+					case 'search_entity': {
+						const entry = entityManager.findEntity(action.name || '');
+						if (entry) {
+							results.push('找到实体：' + entry.name + ' (' + entry.cardType + ') — 文件：' + entry.filePath);
+						} else {
+							results.push('未找到实体：' + (action.name || ''));
+						}
+						break;
+					}
+					case 'get_entity': {
+						const found = entityManager.findEntity(action.name || '');
+						if (!found) {
+							results.push('未找到实体：' + (action.name || ''));
+							break;
+						}
+						// Read full card content including interaction records
+						try {
+							const cardContent = await this.plugin.app.vault.adapter.read(found.filePath);
+							results.push('实体 ' + found.name + ' 的完整档案：\n' + cardContent);
+						} catch {
+							const info = [found.name + ' [' + found.cardType + ']'];
+							if (found.maturity) info.push('成熟度：' + found.maturity);
+							if (found.subtype) info.push('子类型：' + found.subtype);
+							if (found.aliases?.length) info.push('别名：' + found.aliases.join('、'));
+							results.push(info.join('，'));
+						}
+						break;
+					}
+					case 'create_entity': {
+						if (!action.name || !action.type) {
+							results.push('创建失败：缺少 name 或 type');
+							break;
+						}
+						await entityManager.createEntity({
+							title: action.name,
+							type: action.type,
+							metadata: action.attributes || {},
+						});
+						results.push('已创建 ' + action.type + ' 实体：' + action.name);
+						break;
+					}
+					case 'update_entity': {
+						if (!action.name) {
+							results.push('更新失败：缺少 name');
+							break;
+						}
+						const entry = entityManager.findEntity(action.name);
+						if (!entry) {
+							results.push('未找到实体：' + action.name);
+							break;
+						}
+						await entityManager.updateEntity(entry.id, action.attributes || {});
+						results.push('已更新 ' + action.name);
+						break;
+					}
+					case 'list_diary': {
+						try {
+							const files = await this.plugin.app.vault.adapter.list('Daily/');
+							const mdFiles = files.files.filter(f => f.endsWith('.md')).sort().reverse();
+							const today = new Date().toISOString().split('T')[0];
+							const recent = mdFiles.slice(0, 7);
+							results.push('Daily/ 目录共 ' + mdFiles.length + ' 篇日记。最近：' + recent.map(f => f.replace('Daily/', '').replace('.md', '')).join('、'));
+							if (action.dateRange === 'today' || !action.dateRange) {
+								const todayFile = 'Daily/' + today + '.md';
+								if (mdFiles.includes(todayFile)) {
+									results.push('今天的日记：' + todayFile);
+								}
+							}
+						} catch (e) {
+							results.push('读取日记列表失败：' + (e as Error).message);
+						}
+						break;
+					}
+					case 'get_diary': {
+						try {
+							const path = action.diaryPath || ('Daily/' + new Date().toISOString().split('T')[0] + '.md');
+							const content = await this.plugin.app.vault.adapter.read(path);
+							results.push('日记 ' + path + ' 的内容：\n' + content);
+						} catch (e) {
+							results.push('读取日记失败：' + (e as Error).message);
+						}
+						break;
+					}
+					default:
+						results.push('未知操作：' + action.action);
+				}
+			} catch (e) {
+				results.push('操作失败 ' + action.action + ': ' + (e as Error).message);
+			}
+		}
+
+		return results;
+	}
+
+	/**
+	 * Build a comprehensive system prompt for chat mode.
+	 * Chat mode is a vault-wide assistant \u2014 independent from diary analysis.
+	 */
+	private buildChatSystemPrompt(): string {
+		const parts: string[] = [];
+
+		// Tool usage instructions
+		parts.push('\u4F60\u662F TraceMind \u7684 Vault \u7BA1\u5BB6\u52A9\u624B\u3002\u4F60\u53EF\u4EE5\u901A\u8FC7\u5D4C\u5165 [TRACEMIND_ACTION] \u5757\u6765\u6267\u884C\u64CD\u4F5C\u3002');
+
+		parts.push('');
+		parts.push('\u53EF\u7528\u64CD\u4F5C\uFF1A');
+		parts.push('- search_entity: {"action":"search_entity","name":"\u5B9E\u4F53\u540D"}');
+		parts.push('- get_entity: {"action":"get_entity","type":"person","name":"\u5B9E\u4F53\u540D"}');
+		parts.push('- create_entity: {"action":"create_entity","type":"person|object|theme","name":"\u540D\u79F0","attributes":{"key":"value"}}');
+		parts.push('- update_entity: {"action":"update_entity","type":"person|object|theme","name":"\u540D\u79F0","attributes":{"key":"value"}}');
+
+		parts.push('');
+		parts.push('\u4F60\u7684\u80FD\u529B\uFF1A');
+		parts.push('- \u641C\u7D22\u3001\u67E5\u8BE2\u3001\u521B\u5EFA\u3001\u4FEE\u6539 Person/Object/Theme \u6863\u6848');
+		parts.push('- \u603B\u7ED3\u3001\u5206\u6790\u65E5\u8BB0\uFF08Daily/ \u76EE\u5F55\uFF09');
+		parts.push('- \u64B0\u5199\u5468\u62A5\u3001\u6708\u62A5');
+		parts.push('- \u5206\u6790\u5B9E\u4F53\u5173\u7CFB\u548C\u4E92\u52A8\u6A21\u5F0F');
+
+		parts.push('');
+		parts.push('Vault \u7ED3\u6784\uFF1A');
+		parts.push('- Person/{name}.md \u2014 \u5C5E\u6027: company, role, relationship_to_user, aliases');
+		parts.push('- Object/{name}.md \u2014 \u5C5E\u6027: subtype (project/task/product/technology/document/location/other), status, deadline');
+		parts.push('- Theme/{name}.md \u2014 \u5C5E\u6027: subtype (domain/habit/state/pending_decision)');
+		parts.push('- Daily/YYYY-MM-DD.md \u2014 \u65E5\u8BB0');
+
+		// Entity index summary
+		const entries = this.plugin.entityIndex?.entries || [];
+		if (entries.length > 0) {
+			const persons = entries.filter(e => e.cardType === 'person' || e.type === 'person');
+			const objects = entries.filter(e => e.cardType === 'object' || e.type === 'project');
+			const themes = entries.filter(e => e.cardType === 'theme' || e.type === 'theme');
+			parts.push('');
+			parts.push('\u5F53\u524D Vault: ' + persons.length + '\u4EBA\u7269, ' + objects.length + '\u5BA2\u4F53, ' + themes.length + '\u4E3B\u9898');
+			if (persons.length > 0) parts.push('\u4EBA\u7269: ' + persons.map(e => e.name).join('\u3001'));
+			if (objects.length > 0) parts.push('\u5BA2\u4F53: ' + objects.map(e => e.name).join('\u3001'));
+			if (themes.length > 0) parts.push('\u4E3B\u9898: ' + themes.map(e => e.name).join('\u3001'));
+		}
+
+		const profileContext = this.plugin.getUserProfileContext();
+		if (profileContext) {
+			parts.push('');
+			parts.push(profileContext);
+		}
+
+		parts.push('');
+		parts.push('\u5F53\u9700\u8981\u6267\u884C\u64CD\u4F5C\u65F6\uFF0C\u52A1\u5FC5\u4F7F\u7528\u4EE5\u4E0B\u7CBE\u786E\u683C\u5F0F\uFF08\u6CE8\u610F\u6CA1\u6709\u7A7A\u683C\uFF09\uFF1A');
+		parts.push('[TRACEMIND_ACTION]');
+		parts.push('{"action":"...","name":"..."}');
+		parts.push('[/TRACEMIND_ACTION]');
+		parts.push('\u7528\u53CB\u597D\u7684\u4E2D\u6587\u56DE\u7B54\u3002');
+
+		return parts.join('\n');
+	}
+
 	private stripThinking(content: string): string {
 		return content
 			.replace(/<[Tt]hinking>[\s\S]*?<\/[Tt]hinking>/gi, '')
@@ -2420,7 +2591,7 @@ export class AIAnalysisPanelView extends ItemView {
 			const messages: ChatMessage[] = chatSession?.messages || [];
 			const systemMessage: ChatMessage = {
 				role: 'system',
-				content: '你是一个友好的AI助手，可以和用户讨论各种话题，包括日记复盘、思考总结等。'
+				content: this.buildChatSystemPrompt(),
 			};
 			const response = await aiProvider.chat([systemMessage, ...messages], 'chat');
 
@@ -2428,8 +2599,42 @@ export class AIAnalysisPanelView extends ItemView {
 
 			if (response.content) {
 				const cleanContent = this.stripThinking(response.content);
-				await this.streamChatMessage(cleanContent);
-				sessionManager.addChatMessage({ role: 'assistant', content: cleanContent });
+
+				// Parse ACTION blocks and execute them
+				const parsed = parseChatResponse(cleanContent);
+
+				if (parsed.actions.length > 0) {
+					// Show interim text first
+					if (parsed.text) {
+						await this.streamChatMessage(parsed.text);
+					}
+
+					// Execute actions
+					const results = await this.executeChatActions(parsed.actions);
+
+					// Feed results back to LLM for follow-up response
+					if (results.length > 0) {
+						sessionManager.addChatMessage({ role: 'assistant', content: parsed.text || '' });
+						sessionManager.addChatMessage({
+							role: 'system',
+							content: '操作结果：\n' + results.join('\n'),
+						});
+
+						const followUpMessages = sessionManager.getChatSession().messages;
+						const followUp = await aiProvider.chat([systemMessage, ...followUpMessages], 'chat');
+						const followUpText = this.stripThinking(followUp.content);
+						if (followUpText) {
+							await this.streamChatMessage(followUpText);
+							sessionManager.addChatMessage({ role: 'assistant', content: followUpText });
+						}
+					}
+				} else {
+					// No actions — just show the response
+					if (parsed.text) {
+						await this.streamChatMessage(parsed.text);
+						sessionManager.addChatMessage({ role: 'assistant', content: parsed.text });
+					}
+				}
 			}
 		} catch (error) {
 			console.error('AI chat error:', error);

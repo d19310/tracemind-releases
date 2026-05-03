@@ -52,10 +52,10 @@ export const PERSON_P0_ATTRIBUTES = ['company', 'role', 'relationship_to_user'];
 export const PERSON_P1_ATTRIBUTES = ['responsibility', 'communicationStyle'];
 export const PERSON_P2_ATTRIBUTES = ['personality', 'preferences', 'skills'];
 export const OBJECT_P0_ATTRIBUTES = ['subtype', 'status'];
-export const OBJECT_P1_ATTRIBUTES = ['owner', 'deadline', 'description'];
+export const OBJECT_P1_ATTRIBUTES = ['deadline', 'description'];
 export const OBJECT_P2_ATTRIBUTES = ['priority', 'goals'];
 export const THEME_P0_ATTRIBUTES = ['subtype'];
-export const THEME_P1_ATTRIBUTES = ['frequency', 'context'];
+export const THEME_P1_ATTRIBUTES = ['occurrenceCount', 'context'];
 export const THEME_P2_ATTRIBUTES = ['goals', 'emotions'];
 
 /**
