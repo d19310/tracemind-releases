@@ -25,6 +25,12 @@ import type { BlockSession, ChatSession } from './entities/types';
 import { AnalysisPhase } from './entities/types';
 import { isFirstStart, showFirstStartWizard } from './core/first-start';
 import { loadEntityTypeConfig } from './ai/entity-type-config';
+import { insightFilePath, parseInsightMarkdown, formatInsightMarkdown } from './storage/insight-store';
+import type { InsightReport } from './storage/insight-store';
+import { buildDailyInsightPrompt, computeContentHash, buildEntityIndexSummary } from './ai/daily-insight';
+import type { InsightStreamCallbacks } from './ai/daily-insight';
+import { streamChat } from './ai/provider-config';
+import { parseDiaryContent } from './core/diary-parser';
 
 /**
  * Directory structure for TraceMind vault
@@ -36,6 +42,7 @@ const TRACEMIND_DIRS = [
   'Theme',
   'TraceMind/sessions',
   'TraceMind/index',
+  'TraceMind/insights',
 ];
 
 export class TraceMindPlugin extends Plugin {
@@ -383,6 +390,171 @@ export class TraceMindPlugin extends Plugin {
     if (this.aiAnalysisView) {
       this.aiAnalysisView.updateAnalysis(result);
     }
+  }
+
+  // ===== Daily Insight methods =====
+
+  /**
+   * Get the block editor's current date as YYYY-MM-DD string.
+   * Used by AI panel to sync the insight date with the diary view.
+   */
+  getBlockEditorDate(): string | null {
+    if (this.blockEditorView && (this.blockEditorView as any).currentDate) {
+      const d = (this.blockEditorView as any).currentDate as Date;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    return null;
+  }
+
+  /**
+   * Get cached insight report for a date, or null if not found.
+   */
+  async getCachedInsight(dateStr: string): Promise<InsightReport | null> {
+    try {
+      const path = insightFilePath(dateStr);
+      const file = this.app.vault.getFileByPath(path);
+      if (!file) return null;
+      const content = await this.app.vault.read(file);
+      return parseInsightMarkdown(content);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Read a daily diary file as raw markdown string.
+   * Returns null if the file doesn't exist.
+   */
+  async readDailyDiary(dateStr: string): Promise<string | null> {
+    try {
+      const dailyPath = `Daily/${dateStr}.md`;
+      const file = this.app.vault.getFileByPath(dailyPath);
+      if (!file) {
+        // Fallback: check root level
+        const rootFile = this.app.vault.getFileByPath(`${dateStr}.md`);
+        if (rootFile) return await this.app.vault.read(rootFile);
+        return null;
+      }
+      return await this.app.vault.read(file);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Read yesterday's diary (or the nearest previous day with a diary file).
+   * Searches back up to 7 days. Returns empty string if none found.
+   */
+  async readYesterdayDiary(todayStr: string): Promise<string> {
+    const today = new Date(todayStr);
+    for (let i = 1; i <= 7; i++) {
+      const prev = new Date(today);
+      prev.setDate(prev.getDate() - i);
+      const y = prev.getFullYear();
+      const m = String(prev.getMonth() + 1).padStart(2, '0');
+      const d = String(prev.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
+      const content = await this.readDailyDiary(dateStr);
+      if (content) return content;
+    }
+    return '';
+  }
+
+  /**
+   * Check if a date's diary has at least 5 blocks.
+   */
+  async hasMinimumBlocks(dateStr: string): Promise<boolean> {
+    const content = await this.readDailyDiary(dateStr);
+    if (!content) return false;
+    const blocks = parseDiaryContent(content);
+    return blocks.length >= 5;
+  }
+
+  /**
+   * Generate today's insight report with real SSE streaming.
+   * Collects data, calls LLM via streamChat, saves to TraceMind/insights/YYYY-MM-DD.md.
+   */
+  async generateDailyInsight(
+    dateStr: string,
+    callbacks: InsightStreamCallbacks,
+  ): Promise<InsightReport> {
+    // Collect data
+    const todayContent = await this.readDailyDiary(dateStr);
+    if (!todayContent) throw new Error('找不到今天的日记文件');
+
+    const yesterdayContent = await this.readYesterdayDiary(dateStr);
+    const profileContext = this.getUserProfileContext();
+    const entitySummary = buildEntityIndexSummary(this.entityIndex.entries);
+
+    // Build prompt
+    const messages = buildDailyInsightPrompt({
+      todayBlocks: todayContent,
+      yesterdayBlocks: yesterdayContent,
+      profileContext,
+      entityIndexSummary: entitySummary,
+    });
+
+    // Get analysis provider
+    const provider = this.getAIProvider().getProviderForContext('analysis') as ProviderConfig;
+    if (!provider || !provider.apiKey) {
+      throw new Error('请先在设置中配置 AI Provider');
+    }
+
+    // Build provider config for streamChat
+    const aiConfig = {
+      provider: 'openai' as const,
+      apiKey: provider.apiKey,
+      model: provider.model,
+      baseUrl: provider.baseUrl,
+    };
+
+    // Accumulate full text from deltas
+    let fullText = '';
+    let streamError: Error | null = null;
+
+    await streamChat(messages, aiConfig, {
+      onDelta: (text: string) => {
+        fullText += text;
+        callbacks.onDelta(text);
+      },
+      onDone: (_text: string) => {
+        // fullText already accumulated from onDelta
+      },
+      onError: (error: Error) => {
+        streamError = error;
+        callbacks.onError(error);
+      },
+    });
+
+    if (streamError) throw streamError;
+    if (!fullText) throw new Error('LLM 返回了空内容');
+
+    // Compute hash and build report
+    const contentHash = await computeContentHash(todayContent, yesterdayContent);
+    const blocks = parseDiaryContent(todayContent);
+    const report: InsightReport = {
+      date: dateStr,
+      content: fullText,
+      contentHash,
+      generatedAt: new Date().toISOString(),
+      blockCount: blocks.length,
+    };
+
+    // Save to vault
+    const path = insightFilePath(dateStr);
+    const markdown = formatInsightMarkdown(report);
+    const existingFile = this.app.vault.getFileByPath(path);
+    if (existingFile) {
+      await this.app.vault.modify(existingFile, markdown);
+    } else {
+      await this.app.vault.create(path, markdown);
+    }
+
+    callbacks.onDone(fullText);
+    return report;
   }
 }
 
@@ -1013,7 +1185,7 @@ class AIProviderAdapter {
     };
   }
 
-  private getProviderForContext(context: 'analysis' | 'chat'): ProviderConfig | null {
+  getProviderForContext(context: 'analysis' | 'chat'): ProviderConfig | null {
     const { settings } = this.plugin;
     const mapping = settings.agentProviderMapping;
     const providerId = context === 'analysis' ? mapping.analysis : mapping.chat;

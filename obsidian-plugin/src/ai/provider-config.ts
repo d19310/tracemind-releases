@@ -27,6 +27,12 @@ export interface RequestInit {
   body: string;
 }
 
+export interface StreamCallbacks {
+  onDelta: (text: string) => void;
+  onDone: (fullText: string) => void;
+  onError: (error: Error) => void;
+}
+
 /**
  * Validate AI provider configuration
  */
@@ -110,7 +116,7 @@ export function buildRequest(
 }
 
 /**
- * Send chat messages to the given AI provider config
+ * Send chat messages to the given AI provider config (non-streaming).
  */
 export async function chat(
   messages: ChatMessage[],
@@ -129,6 +135,113 @@ export async function chat(
   const body = (await res.json()) as Record<string, unknown>;
   const msg = parseResponse(config.provider, body);
   return { content: msg.content };
+}
+
+/**
+ * Extract a single SSE data line into a text delta for the given provider.
+ * Returns empty string for non-delta events, [DONE] sentinels, or parse errors.
+ */
+export function extractStreamDelta(provider: ProviderType, line: string): string {
+  if (!line.startsWith('data: ')) return '';
+  const data = line.slice(6).trim();
+  if (!data || data === '[DONE]') return '';
+
+  try {
+    const parsed = JSON.parse(data);
+
+    if (provider === 'anthropic') {
+      // Anthropic SSE: { type: "content_block_delta", delta: { type: "text_delta", text: "..." } }
+      if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+        return parsed.delta.text;
+      }
+      return '';
+    }
+
+    // OpenAI / Ollama / Custom: { choices: [{ delta: { content: "..." } }] }
+    const choices = parsed.choices as Array<{ delta?: { content?: string } }> | undefined;
+    if (choices && choices.length > 0 && choices[0].delta?.content) {
+      return choices[0].delta.content;
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Stream chat messages with Server-Sent Events (SSE).
+ * Calls callbacks.onDelta for each text chunk, then callbacks.onDone when complete.
+ * The request body is built via buildRequest with "stream": true added.
+ */
+export async function streamChat(
+  messages: ChatMessage[],
+  config: AiProviderConfig,
+  callbacks: StreamCallbacks,
+): Promise<void> {
+  try {
+    const req = buildRequest(config, messages);
+    const bodyObj = JSON.parse(req.body || '{}');
+    bodyObj.stream = true;
+
+    // Anthropic requires a different streaming header
+    const headers: Record<string, string> = {
+      ...req.headers,
+      'Accept': 'text/event-stream',
+    };
+
+    const res = await fetch(req.url, {
+      method: req.method || 'POST',
+      headers,
+      body: JSON.stringify(bodyObj),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+
+    if (!res.body) {
+      throw new Error('Response body is null — streaming not supported');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      // Keep the last partial line in the buffer
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const delta = extractStreamDelta(config.provider, trimmed);
+        if (delta) {
+          fullText += delta;
+          callbacks.onDelta(delta);
+        }
+      }
+    }
+
+    // Flush remaining buffer
+    if (buffer.trim()) {
+      const delta = extractStreamDelta(config.provider, buffer.trim());
+      if (delta) {
+        fullText += delta;
+        callbacks.onDelta(delta);
+      }
+    }
+
+    callbacks.onDone(fullText);
+  } catch (e) {
+    callbacks.onError(e as Error);
+  }
 }
 
 /**

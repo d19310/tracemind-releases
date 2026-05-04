@@ -4,7 +4,7 @@
  * Adapted for TraceMind Context Card model (v2.1.4)
  */
 
-import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer } from 'obsidian';
 import type TraceMindPlugin from '../main';
 import { AnalysisResult, BlockSession, ChatMessage, EntityPreview, PanelMode, ParsedBlock } from '../entities/types';
 import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './block-editor';
@@ -33,7 +33,7 @@ export class AIAnalysisPanelView extends ItemView {
 	private analysisTabsEl: HTMLElement | null = null;
 	private blockInsightsEl: HTMLElement | null = null;
 	private entityIndexEl: HTMLElement | null = null;
-	private analysisTab: 'block' | 'index' = 'block';
+	private analysisTab: 'block' | 'insight' = 'block';
 	private thinkingEl: HTMLElement | null = null;
 	private hasTodayInsightAttention: boolean = false;
 
@@ -888,14 +888,145 @@ export class AIAnalysisPanelView extends ItemView {
 
 .lifewiki-block-insights {
 	display: none;
-	padding: 0 0 16px;
+	padding: 0 16px 16px;
 	flex-direction: column;
-	gap: 10px;
-	margin-bottom: 0;
+	gap: 0;
+	margin-bottom: 150px;
+	overflow-y: auto;
 }
 
 .lifewiki-block-insights.visible {
 	display: flex;
+}
+
+/* Insight report body - read-only markdown display */
+.lifewiki-insight-body {
+	font-family: var(--font-body);
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--on-surface);
+	padding: 0;
+	user-select: text;
+}
+
+.lifewiki-insight-body h2 {
+	font-size: 15px;
+	font-weight: 650;
+	color: var(--primary);
+	margin: 20px 0 8px 0;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--outline-variant);
+}
+
+.lifewiki-insight-body h3 {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--on-surface);
+	margin: 14px 0 6px 0;
+}
+
+.lifewiki-insight-body p {
+	margin: 6px 0;
+}
+
+.lifewiki-insight-body ul, .lifewiki-insight-body ol {
+	padding-left: 18px;
+	margin: 6px 0;
+}
+
+.lifewiki-insight-body li {
+	margin: 3px 0;
+}
+
+.lifewiki-insight-body strong {
+	color: var(--primary);
+	font-weight: 600;
+}
+
+.lifewiki-insight-body em {
+	color: var(--on-surface-variant);
+}
+
+.lifewiki-insight-body blockquote {
+	border-left: 3px solid var(--primary);
+	padding-left: 12px;
+	margin: 8px 0;
+	color: var(--on-surface-variant);
+	font-style: italic;
+}
+
+.lifewiki-insight-body code {
+	font-size: 12px;
+	background: var(--surface-container-high);
+	padding: 1px 5px;
+	border-radius: 3px;
+}
+
+/* Streaming text area during generation */
+.lifewiki-insight-streaming {
+	font-family: var(--font-body);
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--on-surface);
+	white-space: pre-wrap;
+	word-break: break-word;
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+
+/* Insight empty state */
+.lifewiki-insight-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 24px;
+	text-align: center;
+	color: var(--on-surface-variant);
+	font-size: 13px;
+	opacity: 0.6;
+}
+
+/* Insight generating state */
+.lifewiki-insight-generating {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 16px 0;
+	color: var(--on-surface-variant);
+	font-size: 13px;
+}
+
+/* Insight error state */
+.lifewiki-insight-error {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 24px;
+	text-align: center;
+	color: #ef4444;
+	font-size: 13px;
+	gap: 8px;
+}
+
+.lifewiki-insight-error button {
+	padding: 6px 16px;
+	border: 1px solid var(--outline-variant);
+	border-radius: 6px;
+	background: var(--surface-container-high);
+	color: var(--on-surface);
+	cursor: pointer;
+	font-family: var(--font-body);
+	font-size: 12px;
+}
+
+.lifewiki-insight-error button:hover {
+	background: var(--surface-container-low);
 }
 
 .lifewiki-insight-section {
@@ -1086,15 +1217,14 @@ export class AIAnalysisPanelView extends ItemView {
 
 		this.analysisTabsEl.addClass('visible');
 		if (this.headerTitleEl) this.headerTitleEl.style.display = 'none';
-		const tabs: Array<{ id: 'block' | 'index'; label: string }> = [
+		const tabs: Array<{ id: 'block' | 'insight'; label: string }> = [
 			{ id: 'block', label: '当前日记' },
-			{ id: 'index', label: '实体索引' }
+			{ id: 'insight', label: '今日洞察' }
 		];
 
 		for (const tab of tabs) {
-			const hasAttention = tab.id === 'index' && this.hasTodayInsightAttention;
 			const tabEl = this.analysisTabsEl.createEl('button', {
-				cls: `lifewiki-analysis-tab ${this.analysisTab === tab.id ? 'active' : ''} ${hasAttention ? 'has-attention' : ''}`,
+				cls: `lifewiki-analysis-tab ${this.analysisTab === tab.id ? 'active' : ''}`,
 				text: tab.label,
 				attr: { type: 'button' }
 			});
@@ -1102,8 +1232,8 @@ export class AIAnalysisPanelView extends ItemView {
 				this.analysisTab = tab.id;
 				this.renderAnalysisTabs();
 				this.applyAnalysisTabVisibility();
-				if (tab.id === 'index') {
-					void this.renderEntityIndex();
+				if (tab.id === 'insight') {
+					void this.loadOrGenerateInsight();
 				}
 			});
 		}
@@ -1120,13 +1250,13 @@ export class AIAnalysisPanelView extends ItemView {
 			return;
 		}
 
-		// Analysis mode: show dialogue in chatMessagesEl for 'block' tab
+		// Analysis mode: show appropriate content per tab
 		this.renderAnalysisTabs();
-		if (this.analysisTab === 'index') {
+		if (this.analysisTab === 'insight') {
 			this.emptyStateEl?.removeClass('visible');
 			this.chatMessagesEl?.removeClass('visible');
-			this.blockInsightsEl?.removeClass('visible');
-			this.entityIndexEl?.addClass('visible');
+			this.entityIndexEl?.removeClass('visible');
+			this.blockInsightsEl?.addClass('visible');
 		} else {
 			this.entityIndexEl?.removeClass('visible');
 			this.blockInsightsEl?.removeClass('visible');
@@ -1244,6 +1374,175 @@ export class AIAnalysisPanelView extends ItemView {
 
 	public getMode(): PanelMode {
 		return this.mode;
+	}
+
+	// ===== Daily Insight methods =====
+
+	private async loadOrGenerateInsight() {
+		if (this.mode !== 'analysis' || this.analysisTab !== 'insight') return;
+		if (this.isLoading) return; // prevent concurrent generation
+
+		const dateStr = this.getActiveInsightDate();
+
+		const today = new Date();
+		const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+		const isToday = dateStr === todayStr;
+
+		// Check for cached report first
+		const cachedReport = await this.plugin.getCachedInsight(dateStr);
+
+		if (!isToday) {
+			if (cachedReport) {
+				this.renderInsightContent(cachedReport.content);
+			} else {
+				this.showInsightEmptyState('该日期没有洞察报告');
+			}
+			return;
+		}
+
+		// Today: check block count
+		const hasEnough = await this.plugin.hasMinimumBlocks(dateStr);
+		if (!hasEnough) {
+			this.showInsightEmptyState('今日日记较少，多写几条再来看洞察');
+			return;
+		}
+
+		// Check cache validity
+		const todayContent = await this.plugin.readDailyDiary(dateStr);
+		const yesterdayContent = await this.plugin.readYesterdayDiary(dateStr);
+		const currentHash = await (await import('../ai/daily-insight')).computeContentHash(
+			todayContent || '',
+			yesterdayContent,
+		);
+
+		if (cachedReport && cachedReport.contentHash === currentHash) {
+			this.renderInsightContent(cachedReport.content);
+			return;
+		}
+
+		// Generate new report with streaming
+		this.isLoading = true;
+		this.showInsightGenerating();
+
+		const { InsightStreamCallbacks } = await import('../ai/daily-insight');
+		const callbacks: InsightStreamCallbacks = {
+			onDelta: (chunk: string) => this.appendInsightChunk(chunk),
+			onDone: (_fullText: string) => {
+				this.isLoading = false;
+				// Already rendered progressively — do a final render pass for proper markdown
+				if (this.insightBuffer) {
+					this.renderInsightContent(this.insightBuffer);
+					this.insightBuffer = '';
+				}
+			},
+			onError: (error: Error) => {
+				this.isLoading = false;
+				this.showInsightError(error.message);
+			},
+		};
+
+		try {
+			await this.plugin.generateDailyInsight(dateStr, callbacks);
+		} catch (e) {
+			this.isLoading = false;
+			this.showInsightError((e as Error).message);
+		}
+	}
+
+	private insightBuffer = '';
+
+	private getActiveInsightDate(): string {
+		const dateStr = this.plugin.getBlockEditorDate();
+		if (dateStr) return dateStr;
+		const today = new Date();
+		const y = today.getFullYear();
+		const m = String(today.getMonth() + 1).padStart(2, '0');
+		const d = String(today.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+
+	private showInsightEmptyState(message: string) {
+		if (!this.blockInsightsEl) return;
+		this.blockInsightsEl.empty();
+		this.blockInsightsEl.addClass('visible');
+		const wrapper = this.blockInsightsEl.createEl('div', {
+			cls: 'lifewiki-insight-empty'
+		});
+		wrapper.createEl('p', { text: message });
+	}
+
+	private showInsightGenerating() {
+		if (!this.blockInsightsEl) return;
+		this.blockInsightsEl.empty();
+		this.blockInsightsEl.addClass('visible');
+		this.insightBuffer = '';
+		const wrapper = this.blockInsightsEl.createEl('div', {
+			cls: 'lifewiki-insight-body'
+		});
+		// Show thinking dots during generation
+		const thinking = wrapper.createEl('div', {
+			cls: 'lifewiki-insight-generating'
+		});
+		thinking.createEl('span', { text: '正在生成今日洞察' });
+		const dotsEl = thinking.createEl('span', { cls: 'lifewiki-thinking-dots' });
+		dotsEl.createEl('span', { cls: 'lifewiki-thinking-dot' });
+		dotsEl.createEl('span', { cls: 'lifewiki-thinking-dot' });
+		dotsEl.createEl('span', { cls: 'lifewiki-thinking-dot' });
+	}
+
+	private appendInsightChunk(chunk: string) {
+		if (!this.blockInsightsEl) return;
+		this.insightBuffer += chunk;
+		// Replace generating indicator with progressive text
+		this.blockInsightsEl.empty();
+		this.blockInsightsEl.addClass('visible');
+		const wrapper = this.blockInsightsEl.createEl('div', {
+			cls: 'lifewiki-insight-body'
+		});
+		// Simple progressive render: use pre-wrap text for streaming, avoid MarkdownRenderer until complete
+		wrapper.createEl('pre', {
+			text: this.insightBuffer,
+			cls: 'lifewiki-insight-streaming'
+		});
+		this.scrollInsightToBottom();
+	}
+
+	private renderInsightContent(markdown: string) {
+		if (!this.blockInsightsEl) return;
+		this.blockInsightsEl.empty();
+		this.blockInsightsEl.addClass('visible');
+		const wrapper = this.blockInsightsEl.createEl('div', {
+			cls: 'lifewiki-insight-body'
+		});
+		// Use Obsidian's MarkdownRenderer for full rendering
+		MarkdownRenderer.render(
+			this.app,
+			markdown,
+			wrapper,
+			'',
+			this,
+		);
+	}
+
+	private showInsightError(message: string) {
+		if (!this.blockInsightsEl) return;
+		this.blockInsightsEl.empty();
+		this.blockInsightsEl.addClass('visible');
+		const wrapper = this.blockInsightsEl.createEl('div', {
+			cls: 'lifewiki-insight-error'
+		});
+		wrapper.createEl('p', { text: `生成洞察失败: ${message}` });
+		const retryBtn = wrapper.createEl('button', {
+			text: '重试',
+			attr: { type: 'button' }
+		});
+		retryBtn.addEventListener('click', () => void this.loadOrGenerateInsight());
+	}
+
+	private scrollInsightToBottom() {
+		if (this.blockInsightsEl) {
+			this.blockInsightsEl.scrollTop = this.blockInsightsEl.scrollHeight;
+		}
 	}
 
 	private showThinkingIndicator() {

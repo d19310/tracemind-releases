@@ -5,6 +5,18 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.2.0] - 2026-05-04
+
+### Added
+- **今日洞察** — 天级别深度 AI 分析，替换右侧栏"实体索引"tab。点击"今日洞察"tab（当天 ≥ 5 条日记时可用）触发 LLM 生成 6 章节 Markdown 报告：
+  - 今日概览 / 注意力分布 / 主线与发散 / 变化与摩擦 / 主题动态 / 与前日对比
+- **真实 SSE 流式输出** — `streamChat()` 支持 OpenAI/Anthropic/Custom provider 的 Server-Sent Events streaming，洞察报告渐进生成
+- **报告缓存** — `TraceMind/insights/YYYY-MM-DD.md` 存储，YAML frontmatter + Markdown body，日记内容不变时复用缓存
+- **历史日记浏览** — 日历跳转历史日期查看已生成的洞察报告，不重新分析
+
+### Changed
+- 实体索引功能保留代码但 tab 替换为今日洞察
+
 ## [1.1.1] - 2026-05-04
 
 ### Added
