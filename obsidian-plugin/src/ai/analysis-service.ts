@@ -33,6 +33,7 @@ export interface AnalysisResult {
   hasClarifications: boolean;
   gapCount: number;
   firstQuestion?: string;
+  domainCategory?: string;
 }
 
 /**
@@ -173,6 +174,7 @@ export class AnalysisService {
     console.log('[TraceMind] AC scan found', acMatches.length, 'matches,', candidates.length, 'candidates for LLM:', candidateInfo);
 
     let entities: ExtractedEntity[] = [];
+    let domainCategory: string | undefined;
 
     if (llmConfig && llmConfig.apiKey && llmConfig.baseUrl && llmConfig.model) {
       console.log('[TraceMind] LLM config:', { baseUrl: llmConfig.baseUrl, model: llmConfig.model, hasApiKey: !!llmConfig.apiKey });
@@ -184,9 +186,10 @@ export class AnalysisService {
             ? llmConfig.profileContext + (candidateInfo ? '\n\n已知实体（已建档，不要重复提取，注意相似名称）：' + candidateInfo : '')
             : (candidateInfo ? '\n\n已知实体（已建档，不要重复提取，注意相似名称）：' + candidateInfo : ''),
         };
-        const llmEntities = await extractEntitiesWithLLM(diaryText, enhancedConfig);
-        console.log('[TraceMind] LLM extracted:', llmEntities.length, llmEntities);
-        entities = llmEntities.map(e => ({ ...e }));
+        const output = await extractEntitiesWithLLM(diaryText, enhancedConfig);
+        console.log('[TraceMind] LLM extracted:', output.entities.length, output.entities, 'domain:', output.domain);
+        entities = output.entities.map(e => ({ ...e }));
+        domainCategory = output.domain;
       } catch (e) {
         console.warn('[TraceMind] LLM extraction failed:', (e as Error).message);
       }
@@ -215,7 +218,9 @@ export class AnalysisService {
     }
 
     // Analyze entities through the pipeline
-    return analyzeEntities(entities, existingCards);
+    const result = analyzeEntities(entities, existingCards);
+    result.domainCategory = domainCategory;
+    return result;
   }
 
   /**

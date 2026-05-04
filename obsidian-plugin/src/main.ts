@@ -392,7 +392,7 @@ export class TraceMindPlugin extends Plugin {
  * Build AnalysisResult from analyzed entities for the AI panel.
  * Standalone function so both TraceMindPlugin and AIProviderAdapter can use it.
  */
-function buildAnalysisResultImpl(entities: AnalyzedEntity[], blockId: string, content: string): any {
+function buildAnalysisResultImpl(entities: AnalyzedEntity[], blockId: string, content: string, domainCategory?: string): any {
   const people: any[] = [];
   const objects: any[] = [];
   const dimensions: any[] = [];
@@ -439,8 +439,8 @@ function buildAnalysisResultImpl(entities: AnalyzedEntity[], blockId: string, co
   return {
     blockId,
     timestamp: new Date().toISOString(),
-    category: needsConfirmation.length > 0 ? '待确认' : '工作',
-    areas: [],
+    category: needsConfirmation.length > 0 ? '待确认' : (domainCategory || '工作'),
+    areas: domainCategory ? [domainCategory] : [],
     entities: { people, objects, dimensions },
     needsConfirmation,
     aiResponse: buildAiResponseImpl(entities),
@@ -1006,7 +1006,7 @@ class AIProviderAdapter {
     console.log('[TraceMind] analyzeBlock result entities:', tmResult.entities.length, tmResult);
 
     // Convert to the format expected by block-editor.ts and AI panel
-    const analysisResult = buildAnalysisResultImpl(tmResult.entities, blockId, content);
+    const analysisResult = buildAnalysisResultImpl(tmResult.entities, blockId, content, tmResult.domainCategory);
     return {
       ...analysisResult,
       analysisResult, // setSession expects analysisResult as a field

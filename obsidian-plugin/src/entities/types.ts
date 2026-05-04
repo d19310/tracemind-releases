@@ -76,7 +76,7 @@ export interface Block {
 	children: string[];      // Child block IDs
 	category: '工作' | '个人' | '待确认';
 	areas: string[];        // Areas/tags, e.g. ['工作', '学习']
-	source: 'Lifewiki' | string;  // Channel/source
+	source: 'TraceMind' | string;  // Channel/source
 	aiAnalysis?: AnalysisResult;
 }
 

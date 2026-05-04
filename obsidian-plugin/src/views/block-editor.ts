@@ -69,7 +69,7 @@ interface ChildBlock {
 interface ParsedBlock {
 	id: string;
 	timestamp: string;      // HH:mm
-	source: string;         // [Lifewiki]
+	source: string;         // [TraceMind]
 	category: string;       // #工作 或 #个人
 	content: string;         // 父Block正文
 	children: ChildBlock[]; // 子Block数组
@@ -181,7 +181,7 @@ export class BlockEditorView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'LifeWiki';
+		return 'TraceMind 日记';
 	}
 
 	/**
@@ -246,16 +246,23 @@ export class BlockEditorView extends ItemView {
 		// Global click handler to handle append/edit mode when clicking outside
 		this.contentContainer?.addEventListener('click', (e) => {
 			const target = e.target as HTMLElement;
-			// Check if click is outside a block (both .lifewiki-block and .lifewiki-block-group)
-			if (this.isAppendMode && !target.closest('.lifewiki-block, .lifewiki-block-group') && !target.closest('.lifewiki-input-area')) {
-				this.cancelAppendMode();
-			}
-			// Exit edit mode when clicking outside the editing block (parent or child)
-			if (this.isEditMode && !target.closest('.lifewiki-block.editing, .lifewiki-block-group.editing, .lifewiki-block-child.editing')) {
+			// Check if click is inside the currently editing block
+			const inEditingBlock = target.closest('.lifewiki-block.editing, .lifewiki-block-group.editing, .lifewiki-block-child.editing');
+			// Check if click is inside any block
+			const inAnyBlock = target.closest('.lifewiki-block, .lifewiki-block-group, .lifewiki-block-child');
+			// Check if click is inside the input area
+			const inInputArea = target.closest('.lifewiki-input-area');
+
+			// Exit edit mode when clicking outside the editing block
+			if (this.isEditMode && !inEditingBlock) {
 				this.exitEditMode();
 			}
-			// Clear selection and AI panel when clicking on empty space
-			if (!this.isAppendMode && !this.isEditMode && !target.closest('.lifewiki-block, .lifewiki-block-group, .lifewiki-block-child')) {
+			// Cancel append mode when clicking outside any block AND outside input area
+			if (this.isAppendMode && !inAnyBlock && !inInputArea) {
+				this.cancelAppendMode();
+			}
+			// Clear selection and AI panel when clicking on empty space (not editing or in append mode)
+			if (!this.isAppendMode && !this.isEditMode && !inAnyBlock) {
 				this.selectedBlockId = null;
 				const aiView = this.plugin.getAIAnalysisView();
 				aiView?.clearConversation();
@@ -427,35 +434,53 @@ export class BlockEditorView extends ItemView {
 			}
 
 			/* Edit mode */
-			.lifewiki-block.editing .lifewiki-block-card {
-				background: var(--on-primary-container);
+			.lifewiki-block.editing .lifewiki-block-card,
+			.lifewiki-block-group.editing .lifewiki-block-card {
+				background: var(--surface-container-high);
 				border: 2px solid var(--primary);
 			}
 
-			/* Edit mode textarea and input */
+			/* Edit mode textarea - matches content span style, grid column 2 */
 			.lifewiki-edit-textarea {
 				width: 100%;
 				min-height: 60px;
-				padding: 8px 12px;
+				padding: 0;
 				font-size: 14px;
 				line-height: 1.6;
-				border: 1px solid rgba(204, 195, 214, 0.3);
-				border-radius: 8px;
-				background: var(--surface-container-lowest);
+				border: none !important;
+				border-radius: 0;
+				background: transparent !important;
 				color: var(--on-surface);
 				font-family: var(--font-body);
 				resize: vertical;
 				box-sizing: border-box;
+				outline: none;
+				box-shadow: none !important;
+				grid-column: 2;
+				white-space: pre-wrap;
+				word-break: break-word;
 			}
 
+			.lifewiki-edit-textarea:hover,
+			.lifewiki-edit-textarea:focus {
+				background: transparent !important;
+			}
+
+			/* Edit mode tag input - compact pill, grid column 2 */
 			.lifewiki-edit-input {
-				padding: 4px 8px;
-				font-size: 12px;
-				border: 1px solid rgba(204, 195, 214, 0.3);
-				border-radius: 20px;
-				background: var(--surface-container-lowest);
-				color: var(--on-surface);
+				grid-column: 2;
+				width: fit-content;
+				padding: 2px 8px;
+				font-size: var(--tag-size, 12px);
+				border: none !important;
+				border-radius: var(--tag-radius, 20px);
+				background: var(--tag-background, var(--background-modifier-hover));
+				color: var(--tag-color, var(--text-accent));
 				font-family: var(--font-body);
+				font-weight: 500;
+				outline: none;
+				box-shadow: none;
+				text-align: left;
 			}
 
 			/* Timestamp Label - inline with content */
@@ -1441,27 +1466,33 @@ export class BlockEditorView extends ItemView {
 
 		// Inline row: timestamp + tag + content (like child blocks)
 		if (isEditing) {
-			// Edit mode: show editable fields
-			// Timestamp (read-only)
-			card.createEl('span', {
+			// Edit mode: same grid layout as display mode
+			// [timestamp] [textarea.................]
+			//             [#tag] ...................
+			const mainWrapper = card.createEl('div', {
+				cls: 'lifewiki-main-wrapper'
+			});
+
+			// Timestamp (read-only) - column 1
+			mainWrapper.createEl('span', {
 				text: block.timestamp,
 				cls: 'lifewiki-block-timestamp'
 			});
 
-			// Tag (editable)
-			const tagInput = card.createEl('input', {
-				cls: 'lifewiki-edit-input',
-				attr: { value: block.category, placeholder: '#标签' }
-			}) as HTMLInputElement;
-			tagInput.dataset.field = 'category';
-
-			// Content (editable textarea)
-			const contentTextarea = card.createEl('textarea', {
+			// Content (editable textarea) - column 2, row 1
+			const contentTextarea = mainWrapper.createEl('textarea', {
 				cls: 'lifewiki-edit-textarea',
 				attr: { placeholder: '输入内容...' }
 			}) as HTMLTextAreaElement;
 			contentTextarea.value = block.content;
 			contentTextarea.dataset.field = 'content';
+
+			// Tag (editable) - column 2, row 2, left-aligned
+			const tagInput = mainWrapper.createEl('input', {
+				cls: 'lifewiki-edit-input',
+				attr: { value: block.category, placeholder: '#标签' }
+			}) as HTMLInputElement;
+			tagInput.dataset.field = 'category';
 
 			// Store references for saving
 			(this as any).editTagInput = tagInput;
@@ -1925,6 +1956,7 @@ export class BlockEditorView extends ItemView {
 		this.isAppendMode = false;
 		this.appendModeBlockId = null;
 		this.selectedBlockId = null;
+		this.updateInputAreaForAppendMode();
 
 		// Set edit mode state - store child ID in a special field
 		this.editModeBlockId = childId;
@@ -2082,6 +2114,7 @@ export class BlockEditorView extends ItemView {
 		this.isAppendMode = false;
 		this.appendModeBlockId = null;
 		this.selectedBlockId = null;
+		this.updateInputAreaForAppendMode();
 
 		this.editModeBlockId = blockId;
 		this.isEditMode = true;
@@ -2302,7 +2335,7 @@ export class BlockEditorView extends ItemView {
 		const newBlock: ParsedBlock = {
 			id: uuid(),
 			timestamp,
-			source: 'Lifewiki',
+			source: 'TraceMind',
 			category: '待分析',
 			content,
 			children: [],

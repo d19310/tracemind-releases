@@ -5,6 +5,18 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.1.1] - 2026-05-04
+
+### Added
+- **日记领域自动分类** — LLM 分析日记后根据内容自动判定领域标签（工作/生活/学习/运动/其他），结合用户 PROFILE.md 背景信息，分析完成后自动更新日记块的 `#待分析` 标签为对应领域标签
+
+### Changed
+- **品牌更新** — 日记视图 tab 标签从 LifeWiki 改为 TraceMind 日记，block source 从 Lifewiki 改为 TraceMind
+
+### Fixed
+- **编辑模式布局** — 标签位置与正常状态保持一致（左对齐，在内容下方），textarea 无边框无背景色变化
+- **编辑/追加模式冲突** — 双击进入编辑模式时不再同时激活追加模式，单击外部正确退出编辑和追加状态
+
 ## [1.1.0] - 2026-05-04
 
 ### Plugin Release v1.1.0
