@@ -1,7 +1,7 @@
 {
 	"id": "tracemind",
 	"name": "TraceMind",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"minAppVersion": "1.0.0",
 	"description": "Entity-centric AI knowledge extraction from daily journals with Context Cards",
 	"author": "d19310",

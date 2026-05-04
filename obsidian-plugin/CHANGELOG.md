@@ -5,6 +5,16 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.1.0] - 2026-05-04
+
+### Plugin Release v1.1.0
+- **Chat Mode Vault Assistant** — 对话式助手支持全文搜索和多实体查询
+- **Entity Type Configuration** — 支持配置 Entity 类型的名称/颜色/文件夹映射
+- **Agent-Provider Mapping** — 基于 Modal 的 Agent 与 AI Provider 设置界面
+- **AI Analysis Interaction Refactor** — PRD 引导的澄清流程，自然对话式交互
+- **Multiple Fixes** — BlockEditor 主区域打开、URL 规范化、Obsidian SettingTab 兼容性、双链修复
+- **安装脚本更新** — 简化为纯交互式提示，支持公共 Release 仓库下载
+
 ## [2.0.0] - 2026-05-03
 
 ### Major Rewrite
