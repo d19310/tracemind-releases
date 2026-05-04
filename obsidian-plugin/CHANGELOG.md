@@ -5,6 +5,14 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.2.1] - 2026-05-05
+
+### Fixed
+- **日历历史日记导航** — 修复点击日历日期无法调出历史日记的问题（`navigateToDate` 调用错误的方法名）
+- **插件启动崩溃** — 修复 `ensureVaultStructure` 重复调用导致 `Folder already exists` 插件加载失败
+- **今日洞察输入框** — 切换到今日洞察 tab 时正确隐藏 AI 输入框
+- **`getBlockEditorDate` 类型兼容** — 同时支持 Date 和 string 类型的 `currentDate`
+
 ## [1.2.0] - 2026-05-04
 
 ### Added

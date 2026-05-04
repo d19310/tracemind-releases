@@ -156,8 +156,6 @@ export class TraceMindPlugin extends Plugin {
         showFirstStartWizard(this.app, async () => {
           await this.ensureVaultStructure();
         });
-      } else {
-        await this.ensureVaultStructure();
       }
     } catch (e) {
       console.error('TraceMind: Failed to load', e);
@@ -250,10 +248,9 @@ export class TraceMindPlugin extends Plugin {
     }
     const blockLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_BLOCK_EDITOR);
     for (const leaf of blockLeaves) {
-      const view = leaf.view as { currentDate?: Date; loadCurrentDay?: () => Promise<void> };
-      if (view.currentDate !== undefined && typeof view.loadCurrentDay === 'function') {
-        view.currentDate = date;
-        await view.loadCurrentDay();
+      const view = leaf.view as BlockEditorView;
+      if (typeof view.setCurrentDate === 'function') {
+        await view.setCurrentDate(date);
       }
     }
   }
@@ -400,11 +397,17 @@ export class TraceMindPlugin extends Plugin {
    */
   getBlockEditorDate(): string | null {
     if (this.blockEditorView && (this.blockEditorView as any).currentDate) {
-      const d = (this.blockEditorView as any).currentDate as Date;
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
+      const raw = (this.blockEditorView as any).currentDate;
+      // currentDate can be a Date (from navigateToDate) or a string "YYYY-MM-DD" (from constructor)
+      if (raw instanceof Date && !isNaN(raw.getTime())) {
+        const y = raw.getFullYear();
+        const m = String(raw.getMonth() + 1).padStart(2, '0');
+        const d = String(raw.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      if (typeof raw === 'string' && raw.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return raw;
+      }
     }
     return null;
   }

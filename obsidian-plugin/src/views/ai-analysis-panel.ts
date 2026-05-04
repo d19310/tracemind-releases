@@ -12,6 +12,8 @@ import { CardType, MaturityLevel } from '../core/context-card';
 import type { AnalyzedEntity } from '../ai/analysis-service';
 import { parseChatResponse, type ChatAction } from '../ai/chat-action-parser';
 import { buildClarificationAttributeGuide } from '../ai/entity-type-config';
+import type { InsightStreamCallbacks } from '../ai/daily-insight';
+import { computeContentHash } from '../ai/daily-insight';
 
 export const VIEW_TYPE_AI_ANALYSIS = 'tracemind-ai-analysis';
 
@@ -1181,9 +1183,12 @@ export class AIAnalysisPanelView extends ItemView {
 	}
 
 	private updateInputVisibility() {
-		// Input is visible in BOTH analysis and chat modes
 		if (this.inputAreaEl) {
-			this.inputAreaEl.style.removeProperty('display');
+			if (this.mode === 'analysis' && this.analysisTab === 'insight') {
+				this.inputAreaEl.style.display = 'none';
+			} else {
+				this.inputAreaEl.style.removeProperty('display');
+			}
 		}
 	}
 
@@ -1263,6 +1268,7 @@ export class AIAnalysisPanelView extends ItemView {
 			if (!this.activeBlockId) {
 				this.emptyStateEl?.addClass('visible');
 				this.chatMessagesEl?.removeClass('visible');
+				this.updateInputVisibility();
 				return;
 			}
 			this.emptyStateEl?.removeClass('visible');
@@ -1410,7 +1416,7 @@ export class AIAnalysisPanelView extends ItemView {
 		// Check cache validity
 		const todayContent = await this.plugin.readDailyDiary(dateStr);
 		const yesterdayContent = await this.plugin.readYesterdayDiary(dateStr);
-		const currentHash = await (await import('../ai/daily-insight')).computeContentHash(
+		const currentHash = await computeContentHash(
 			todayContent || '',
 			yesterdayContent,
 		);
@@ -1424,7 +1430,6 @@ export class AIAnalysisPanelView extends ItemView {
 		this.isLoading = true;
 		this.showInsightGenerating();
 
-		const { InsightStreamCallbacks } = await import('../ai/daily-insight');
 		const callbacks: InsightStreamCallbacks = {
 			onDelta: (chunk: string) => this.appendInsightChunk(chunk),
 			onDone: (_fullText: string) => {
@@ -2180,7 +2185,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 	private async renderEntityIndex() {
 		if (!this.entityIndexEl || this.mode !== 'analysis') return;
-		if (this.analysisTab !== 'index') {
+		if (this.analysisTab !== 'insight') {
 			this.entityIndexEl.removeClass('visible');
 			return;
 		}
@@ -2274,7 +2279,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 	private async refreshEntityIndexAttention() {
 		this.hasTodayInsightAttention = true;
-		if (this.mode === 'analysis' && this.analysisTab === 'index') {
+		if (this.mode === 'analysis' && this.analysisTab === 'insight') {
 			this.renderAnalysisTabs();
 		}
 	}
