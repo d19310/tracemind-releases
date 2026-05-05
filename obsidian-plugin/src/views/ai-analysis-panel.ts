@@ -571,6 +571,20 @@ export class AIAnalysisPanelView extends ItemView {
 	opacity: 1;
 }
 
+/* Chat streaming pre — raw text during SSE streaming before Markdown render */
+.lifewiki-chat-streaming {
+	font-family: var(--font-body);
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--on-surface);
+	white-space: pre-wrap;
+	word-break: break-word;
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+
 .lifewiki-thinking {
 	display: flex;
 	align-items: center;
@@ -2310,11 +2324,17 @@ export class AIAnalysisPanelView extends ItemView {
 			});
 		}
 
-		this.renderMessageContent(msgEl, content);
+		// Use full Markdown rendering for assistant messages, plain text for user
+		if (role === 'assistant' && content) {
+			void this.renderMessageMarkdown(msgEl, content);
+		} else {
+			this.renderMessageContent(msgEl, content);
+		}
 		this.scrollToBottom();
 
 		// Persist all messages to session for history playback (skip during replay)
-		if (!this.replayingHistory && this.mode === 'analysis' && this.activeBlockId) {
+		// Skip empty content — streaming messages will persist later with full text
+		if (!this.replayingHistory && this.mode === 'analysis' && this.activeBlockId && content) {
 			const sessionManager = this.plugin.getSessionManager();
 			sessionManager.addMessage(this.activeBlockId, { role, content }, this.activeParentId);
 		}
@@ -2334,6 +2354,18 @@ export class AIAnalysisPanelView extends ItemView {
 		}
 	}
 
+	/** Render full Markdown content using Obsidian's MarkdownRenderer */
+	private async renderMessageMarkdown(container: HTMLElement, content: string) {
+		container.empty();
+		await MarkdownRenderer.render(
+			this.app,
+			content,
+			container,
+			'',
+			this,
+		);
+	}
+
 	private async streamChatMessage(content: string): Promise<HTMLElement | null> {
 		const cleanContent = this.stripThinking(content);
 		const msgEl = this.addChatMessage('assistant', '');
@@ -2348,7 +2380,14 @@ export class AIAnalysisPanelView extends ItemView {
 			await new Promise(resolve => setTimeout(resolve, 8));
 		}
 
-		this.renderMessageContent(msgEl, cleanContent);
+		await this.renderMessageMarkdown(msgEl, cleanContent);
+
+		// Persist the final full content to the session (addChatMessage skipped it because content was empty)
+		if (!this.replayingHistory && this.mode === 'analysis' && this.activeBlockId) {
+			const sessionManager = this.plugin.getSessionManager();
+			sessionManager.addMessage(this.activeBlockId, { role: 'assistant', content: cleanContent }, this.activeParentId);
+		}
+
 		return msgEl;
 	}
 
@@ -2787,9 +2826,10 @@ export class AIAnalysisPanelView extends ItemView {
 					}
 					case 'get_diary': {
 						try {
-							const path = action.diaryPath || ('Daily/' + new Date().toISOString().split('T')[0] + '.md');
+							const dateStr = action.date || new Date().toISOString().split('T')[0];
+							const path = 'Daily/' + dateStr + '.md';
 							const content = await this.plugin.app.vault.adapter.read(path);
-							results.push('日记 ' + path + ' 的内容：\n' + content);
+							results.push('日记 ' + dateStr + ' 的内容：\n' + content);
 						} catch (e) {
 							results.push('读取日记失败：' + (e as Error).message);
 						}
@@ -2816,24 +2856,34 @@ export class AIAnalysisPanelView extends ItemView {
 		// Tool usage instructions
 		parts.push('\u4F60\u662F TraceMind \u7684 Vault \u7BA1\u5BB6\u52A9\u624B\u3002\u4F60\u53EF\u4EE5\u901A\u8FC7\u5D4C\u5165 [TRACEMIND_ACTION] \u5757\u6765\u6267\u884C\u64CD\u4F5C\u3002');
 
+		// Today's date for diary lookup context
+		const today = new Date();
+		parts.push('\u4ECA\u5929\u662F ' + today.getFullYear() + '\u5E74' + (today.getMonth() + 1) + '\u6708' + today.getDate() + '\u65E5\u3002');
+
 		parts.push('');
 		parts.push('\u53EF\u7528\u64CD\u4F5C\uFF1A');
 		parts.push('- search_entity: {"action":"search_entity","name":"\u5B9E\u4F53\u540D"}');
 		parts.push('- get_entity: {"action":"get_entity","type":"person","name":"\u5B9E\u4F53\u540D"}');
+		parts.push('- get_diary: {"action":"get_diary","date":"YYYY-MM-DD"}');
 		parts.push('- create_entity: {"action":"create_entity","type":"person|object|theme","name":"\u540D\u79F0","attributes":{"key":"value"}}');
 		parts.push('- update_entity: {"action":"update_entity","type":"person|object|theme","name":"\u540D\u79F0","attributes":{"key":"value"}}');
 
 		parts.push('');
 		parts.push('\u4F60\u7684\u80FD\u529B\uFF1A');
 		parts.push('- \u641C\u7D22\u3001\u67E5\u8BE2\u3001\u521B\u5EFA\u3001\u4FEE\u6539 Person/Object/Theme \u6863\u6848');
+		parts.push('- \u67E5\u770B\u4EFB\u610F\u65E5\u671F\u65E5\u8BB0\uFF08\u4F7F\u7528 get_diary \u64CD\u4F5C\uFF09');
 		parts.push('- \u603B\u7ED3\u3001\u5206\u6790\u65E5\u8BB0\uFF08Daily/ \u76EE\u5F55\uFF09');
 		parts.push('- \u64B0\u5199\u5468\u62A5\u3001\u6708\u62A5');
 		parts.push('- \u5206\u6790\u5B9E\u4F53\u5173\u7CFB\u548C\u4E92\u52A8\u6A21\u5F0F');
 
 		parts.push('');
+		parts.push('\u91CD\u8981\u89C4\u5219\uFF1A');
+		parts.push('-\u5F53\u7528\u6237\u63D0\u53CA\u67D0\u4E2A\u5B9E\u4F53\u65F6\uFF0C\u4F18\u5148\u4F7F\u7528 get_entity \u67E5\u8BE2\u5176\u6863\u6848\uFF0C\u6863\u6848\u4E2D\u5DF2\u5305\u542B\u4E0E\u8BE5\u5B9E\u4F53\u76F8\u5173\u7684\u65E5\u8BB0\u4E92\u52A8\u8BB0\u5F55\u3002\u53EA\u6709\u5728\u6863\u6848\u4FE1\u606F\u4E0D\u8DB3\u65F6\u624D\u7528 get_diary \u8865\u5145\u67E5\u8BE2\u3002');
+
+		parts.push('');
 		parts.push('Vault \u7ED3\u6784\uFF1A');
 		parts.push('- Person/{name}.md \u2014 \u5C5E\u6027: company, role, relationship_to_user, aliases');
-		parts.push('- Object/{name}.md \u2014 \u5C5E\u6027: subtype (project/task/product/technology/document/location/other), status, deadline');
+		parts.push('- Object/{name}.md \u2014 \u5C5E\u6027: subtype (company/\u516C\u53F8 project/\u9879\u76EE task/\u4EFB\u52A1 product/\u4EA7\u54C1 technology/\u6280\u672F document/\u6587\u6863 location/\u5730\u70B9 other/\u5176\u4ED6), status, deadline');
 		parts.push('- Theme/{name}.md \u2014 \u5C5E\u6027: subtype (friction/\u6469\u64E6 goal/\u76EE\u6807 judgment/\u5224\u65AD idea/\u60F3\u6CD5)');
 		parts.push('- Daily/YYYY-MM-DD.md \u2014 \u65E5\u8BB0');
 
@@ -2932,6 +2982,7 @@ export class AIAnalysisPanelView extends ItemView {
 							if (parsed.text) {
 								this.updateLastAssistantMessage(parsed.text);
 							}
+							await this.finalizeLastAssistantMessage();
 
 							// Execute actions
 							const results = await this.executeChatActions(parsed.actions);
@@ -2962,10 +3013,11 @@ export class AIAnalysisPanelView extends ItemView {
 											this.updateLastAssistantMessage(currentContent + text);
 											this.scrollToBottom();
 										},
-										onDone: () => {
+										onDone: async () => {
 											if (followUpText) {
 												sessionManager.addChatMessage({ role: 'assistant', content: followUpText });
 											}
+											await this.finalizeLastAssistantMessage();
 										},
 										onError: (error: Error) => {
 											console.error('Follow-up AI stream error:', error);
@@ -2982,6 +3034,7 @@ export class AIAnalysisPanelView extends ItemView {
 							} else {
 								sessionManager.addChatMessage({ role: 'assistant', content: cleanContent });
 							}
+							await this.finalizeLastAssistantMessage();
 						}
 
 						this.isLoading = false;
@@ -3006,13 +3059,17 @@ export class AIAnalysisPanelView extends ItemView {
 		}
 	}
 
-	/** Update the content of the last assistant message element */
+	/** Update the content of the last assistant message element (streaming — raw text) */
 	private updateLastAssistantMessage(content: string) {
 		if (!this.chatMessagesEl) return;
 		const messages = this.chatMessagesEl.querySelectorAll('.lifewiki-chat-msg.assistant');
 		const lastMsg = messages[messages.length - 1] as HTMLElement;
 		if (lastMsg) {
-			this.renderMessageContent(lastMsg, content);
+			lastMsg.empty();
+			// Strip partial/incomplete TRACEMIND_ACTION blocks during streaming
+			const display = content.replace(/\[TRACEMIND_ACTION\][\s\S]*?\[\/TRACEMIND_ACTION\]/g, '')
+				.replace(/\[TRACEMIND_ACTION\][\s\S]*$/, ''); // incomplete opening block
+			lastMsg.createEl('pre', { cls: 'lifewiki-chat-streaming', text: display || '...' });
 		}
 	}
 
@@ -3022,6 +3079,19 @@ export class AIAnalysisPanelView extends ItemView {
 		const messages = this.chatMessagesEl.querySelectorAll('.lifewiki-chat-msg.assistant');
 		const lastMsg = messages[messages.length - 1] as HTMLElement;
 		return lastMsg?.textContent || '';
+	}
+
+	/** Re-render the last assistant message with full Markdown formatting */
+	private async finalizeLastAssistantMessage() {
+		if (!this.chatMessagesEl) return;
+		const messages = this.chatMessagesEl.querySelectorAll('.lifewiki-chat-msg.assistant');
+		const lastMsg = messages[messages.length - 1] as HTMLElement;
+		if (lastMsg) {
+			const text = lastMsg.textContent || '';
+			if (text) {
+				await this.renderMessageMarkdown(lastMsg, text);
+			}
+		}
 	}
 
 	private async handleEntityArchiving(entities: Array<{ name: string; type: 'person' | 'object' | 'theme'; smallType: string; context: string }>) {

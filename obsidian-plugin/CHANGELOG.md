@@ -5,6 +5,18 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.3.1] - 2026-05-05
+
+### Added
+- **Object subtype: company** — 公司/组织 subtype，P0 优先级，带 LLM 识别指引
+- **AI 聊天日期感知** — 系统 prompt 告知当前日期，`get_diary` action 补全
+
+### Fixed
+- **聊天 Markdown 渲染** — AI 回复使用 Obsidian MarkdownRenderer 渲染（表格、标题、列表、引用等）
+- **Streaming 闪烁** — streaming 期间用 `<pre>` 标签显示，过滤 TRACEMIND_ACTION 块，结束切换格式化
+- **Session 持久化空内容** — `streamChatMessage` 结束时正确持久化完整内容
+- **聊天查询策略** — 优先查实体档案（含互动记录），档案不足时才查日记
+
 ## [1.3.0] - 2026-05-05
 
 ### Changed

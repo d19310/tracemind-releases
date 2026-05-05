@@ -62,6 +62,7 @@ export const THEME_P2_ATTRIBUTES = ['context'];
  * Valid Object subtypes with their priority levels
  */
 export const OBJECT_SUBTYPE_PRIORITY: Record<string, 'P0' | 'P1' | 'P2'> = {
+  company: 'P0',
   project: 'P0',
   task: 'P0',
   product: 'P1',

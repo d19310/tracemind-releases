@@ -44,6 +44,10 @@ const DEFAULT_CONFIG: EntityTypeConfigFile = {
     object: {
       label: '客体',
       subtypes: {
+        company: { priority: 'P0', label: '公司/组织', hints: [
+          '公司、客户、供应商、合作伙伴、机构等有专有名称的组织',
+          '如：穹彻智能、字节跳动、某供应商',
+        ] },
         project: { priority: 'P0', label: '项目' },
         task: { priority: 'P0', label: '任务', hints: [
           '待办事项、交付物、有明确截止日期的行动项',

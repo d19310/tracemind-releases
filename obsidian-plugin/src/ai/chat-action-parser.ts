@@ -11,6 +11,7 @@ export interface ChatAction {
   type?: string;
   name?: string;
   attributes?: Record<string, string>;
+  date?: string;
   dateRange?: string;
   diaryPath?: string;
 }
