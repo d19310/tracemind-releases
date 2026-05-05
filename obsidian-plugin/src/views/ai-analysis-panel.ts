@@ -25,6 +25,9 @@ export class AIAnalysisPanelView extends ItemView {
 	private chatMessagesEl: HTMLElement | null = null;
 	private inputAreaEl: HTMLElement | null = null;
 	private inputTextarea: HTMLTextAreaElement | null = null;
+	private agentSelectEl: HTMLSelectElement | null = null;
+	private currentAgentKey: string = '';  // '' = cloud, 'claude-code' / 'hermes'
+	private detectedLocalAgents: string[] = [];  // keys of detected agents
 	private sendBtnEl: HTMLElement | null = null;
 	private chatModeClearBtnEl: HTMLElement | null = null;
 	private modeToggleBtnEl: HTMLElement | null = null;
@@ -195,6 +198,15 @@ export class AIAnalysisPanelView extends ItemView {
 			}
 		});
 
+		// Agent selector (left side of mode row)
+		this.agentSelectEl = modeRow.createEl('select', {
+			cls: 'lifewiki-agent-select',
+			attr: { style: 'display:none' }  // hidden by default, shown in chat mode
+		}) as HTMLSelectElement;
+		this.agentSelectEl.addEventListener('change', () => {
+			this.currentAgentKey = this.agentSelectEl?.value || '';
+		});
+
 		this.sendBtnEl = modeRow.createEl('button', {
 			cls: 'lifewiki-send-btn',
 			attr: { title: '发送' }
@@ -207,6 +219,9 @@ export class AIAnalysisPanelView extends ItemView {
 				this.sendMessage();
 			}
 		});
+
+		// Detect local agents asynchronously
+		this.detectLocalAgents();
 
 		this.showEmptyState();
 		this.renderAnalysisTabs();
@@ -844,6 +859,33 @@ export class AIAnalysisPanelView extends ItemView {
 	color: var(--on-surface);
 }
 
+/* Agent selector (left side of mode row) */
+.lifewiki-agent-select {
+	padding: 4px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--surface-container-high);
+	background: var(--surface-container-high);
+	color: var(--on-surface-variant);
+	font-family: var(--font-body);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	outline: none;
+	max-width: 120px;
+	margin-right: auto;
+}
+
+.lifewiki-agent-select:hover,
+.lifewiki-agent-select:focus {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+
+.lifewiki-agent-select option {
+	background: var(--surface-container-high);
+	color: var(--on-surface);
+}
+
 .lifewiki-analysis-tabs {
 	display: none;
 	gap: 0;
@@ -1300,6 +1342,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 	public switchToChatMode() {
 		this.mode = 'chat';
+		if (this.agentSelectEl) this.agentSelectEl.style.display = '';
 		// Isolate from analysis: clear all analysis state
 		this.activeBlockId = null;
 		this.activeParentId = null;
@@ -1351,6 +1394,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 	public switchToAnalysisMode() {
 		this.mode = 'analysis';
+		if (this.agentSelectEl) this.agentSelectEl.style.display = 'none';
 		this.analysisTab = this.analysisTab || 'block';
 		this.renderModeToggleButton();
 		this.setEmptyStateText('选择或输入一条日记');
@@ -2948,6 +2992,109 @@ export class AIAnalysisPanelView extends ItemView {
 	/**
 	 * Send a chat message via a local agent CLI (e.g., Claude Code).
 	 */
+	/**
+	 * Build a prompt for local agents (Claude Code, Hermes, etc.).
+	 * Local agents have their own file tools — just need to know vault location and structure.
+	 */
+	/** Detect available local agents and populate the selector */
+	private async detectLocalAgents() {
+		if (!this.plugin.settings.localAgentEnabled) return;
+		if (!this.agentSelectEl) return;
+
+		try {
+			const { resolveExecutable } = await import('../agent/provider');
+			const agents = [
+				{ key: 'claude-code', name: 'Claude Code', binary: 'claude' },
+				{ key: 'hermes', name: 'Hermes', binary: 'hermes' },
+			];
+
+			this.detectedLocalAgents = [];
+			for (const agent of agents) {
+				const found = await resolveExecutable(agent.binary);
+				if (found) this.detectedLocalAgents.push(agent.key);
+			}
+		} catch { /* silent */ }
+
+		this.rebuildAgentSelector();
+	}
+
+	/** Rebuild agent selector with cloud providers + detected local agents */
+	private rebuildAgentSelector() {
+		if (!this.agentSelectEl) return;
+		const prev = this.agentSelectEl.value || this.currentAgentKey;
+		this.agentSelectEl.empty();
+
+		const providers = this.plugin.settings.providers || [];
+		for (const p of providers) {
+			this.agentSelectEl.createEl('option', { value: p.id, text: p.name || p.model || p.id });
+		}
+		if (providers.length === 0) {
+			this.agentSelectEl.createEl('option', { value: '', text: '云端 API' });
+		}
+
+		if (this.plugin.settings.localAgentEnabled) {
+			const labels: Record<string, string> = { 'claude-code': 'Claude Code', 'hermes': 'Hermes' };
+			for (const key of this.detectedLocalAgents) {
+				this.agentSelectEl.createEl('option', { value: key, text: labels[key] || key });
+			}
+		}
+
+		if (prev && this.agentSelectEl.querySelector(`option[value="${prev}"]`)) {
+			this.agentSelectEl.value = prev;
+		}
+		this.currentAgentKey = this.agentSelectEl.value;
+	}
+
+	private buildLocalAgentPrompt(userContent: string): string {
+		const today = new Date();
+		const vaultPath = (this.app.vault.adapter as any).basePath || 'vault';
+
+		const parts: string[] = [];
+		parts.push(`你是 TraceMind 知识库的 AI 助手。今天是 ${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日。`);
+		parts.push('');
+		parts.push(`## Vault 位置`);
+		parts.push(`你的工作目录就是 Obsidian Vault: ${vaultPath}`);
+		parts.push('你可以用文件工具直接读 Person/Object/Theme/Daily 目录下的 Markdown 文件。');
+		parts.push('');
+		parts.push('## Vault 结构');
+		parts.push(`- Person/{name}.md — 人物档案（属性: company, role, relationship_to_user）`);
+		parts.push(`- Object/{name}.md — 客体档案（属性: subtype=company/项目 project/任务 task/产品 product/技术 technology/文档 document/地点 location/其他 other, status, deadline）`);
+		parts.push(`- Theme/{name}.md — 主题档案（属性: subtype=friction/摩擦 goal/目标 judgment/判断 idea/想法）`);
+		parts.push(`- Daily/YYYY-MM-DD.md — 每日日记`);
+		parts.push('');
+		parts.push('## 规则');
+		parts.push('- 用户提到某个实体时，先读其档案（Person/Object/Theme 目录下同名 .md 文件）');
+		parts.push('- 档案中已有互动记录关联到相关日记');
+		parts.push('- 不要编造不存在的信息');
+		parts.push('- 简短、有用地回答');
+
+		// Include entity index summary
+		const entries = this.plugin.entityIndex?.entries || [];
+		if (entries.length > 0) {
+			const persons = entries.filter(e => e.cardType === 'person' || e.type === 'person');
+			const objects = entries.filter(e => e.cardType === 'object' || e.type === 'project');
+			const themes = entries.filter(e => e.cardType === 'theme' || e.type === 'theme');
+			parts.push('');
+			parts.push(`当前 Vault: ${persons.length}人物, ${objects.length}客体, ${themes.length}主题`);
+			if (persons.length > 0) parts.push('人物: ' + persons.map(e => e.name).join('、'));
+			if (objects.length > 0) parts.push('客体: ' + objects.map(e => e.name).join('、'));
+			if (themes.length > 0) parts.push('主题: ' + themes.map(e => e.name).join('、'));
+		}
+
+		const profileContext = this.plugin.getUserProfileContext();
+		if (profileContext) {
+			parts.push('');
+			parts.push(profileContext);
+		}
+
+		parts.push('');
+		parts.push('---');
+		parts.push('');
+		parts.push('用户消息：' + userContent);
+
+		return parts.join('\n');
+	}
+
 	private async sendChatViaLocalAgent(
 		content: string,
 		systemMessage: ChatMessage,
@@ -2956,12 +3103,19 @@ export class AIAnalysisPanelView extends ItemView {
 		const sessionManager = this.plugin.getSessionManager();
 
 		try {
-			const { claudeCodeProvider } = await import('../agent/providers/claude-code');
+			const providerKey = this.currentAgentKey;
+			let provider: import('../agent/provider').AgentProvider;
 
-			// Build a combined prompt with system context
-			const fullPrompt = systemMessage.content + '\n\n---\n\n用户消息：' + content;
+			if (providerKey === 'hermes') {
+				const { hermesProvider } = await import('../agent/providers/hermes');
+				provider = hermesProvider;
+			} else {
+				const { claudeCodeProvider } = await import('../agent/providers/claude-code');
+				provider = claudeCodeProvider;
+			}
+			const fullPrompt = this.buildLocalAgentPrompt(content);
 
-			const session = claudeCodeProvider.execute(fullPrompt);
+			const session = provider.execute(fullPrompt);
 
 			let firstDelta = true;
 			let fullText = '';
@@ -3081,8 +3235,9 @@ export class AIAnalysisPanelView extends ItemView {
 		};
 
 		// Check if using a local agent provider
-		const localAgent = this.plugin.settings.localAgentProvider;
-		if (localAgent) {
+		// Check if using a local agent
+		const isLocalAgent = this.detectedLocalAgents.includes(this.currentAgentKey);
+		if (isLocalAgent) {
 			await this.sendChatViaLocalAgent(content, systemMessage, messages);
 			return;
 		}

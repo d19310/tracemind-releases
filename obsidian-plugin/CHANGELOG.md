@@ -8,7 +8,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 ## [1.4.0] - 2026-05-05
 
 ### Added
-- **本地 Agent 集成** — 支持连接本地安装的 AI agent CLI（Claude Code），替代云端 API。设置中选择 "Claude Code" 后，聊天模式通过 `child_process.spawn()` 调本地 CLI，stdin/stdout JSON stream 通信
+- **本地 Agent 集成** — 支持连接本地安装的 AI agent CLI（Claude Code / Hermes），替代云端 API
+  - 设置中一键开启，自动检测本机已安装的 agent，显示 🟢/🔴 状态
+  - 聊天模式输入框左侧 agent 选择器，可切换云端 API / Claude Code / Hermes
+  - 本地 agent 通过 `child_process.spawn()` 子进程通信，有权直接读写 vault 文件
+  - agent 收到定制 prompt（vault 路径 + 目录结构 + 实体索引 + profile），利用自带文件工具检索
+- **Agent Provider 抽象层** — 可扩展架构，新增 agent 只需实现 `AgentProvider` 接口
 
 ## [1.3.2] - 2026-05-05
 

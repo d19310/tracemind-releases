@@ -20,8 +20,8 @@ export interface TraceMindSettings {
     analysis: string;
     chat: string;
   };
-  /** Local agent provider key (e.g. 'claude-code') or empty for cloud API */
-  localAgentProvider: string;
+  /** Enable local agent CLI integration */
+  localAgentEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: TraceMindSettings = {
@@ -31,5 +31,5 @@ export const DEFAULT_SETTINGS: TraceMindSettings = {
     analysis: '',
     chat: '',
   },
-  localAgentProvider: '',
+  localAgentEnabled: false,
 };

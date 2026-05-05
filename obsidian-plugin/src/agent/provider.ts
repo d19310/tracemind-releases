@@ -69,14 +69,31 @@ export interface AgentSession {
  * Returns the first found path, or null if not found.
  */
 export async function resolveExecutable(name: string): Promise<string | null> {
-  const { execSync } = await import('node:child_process');
-  try {
-    const path = execSync(`which ${name} 2>/dev/null || where ${name} 2>nul`, {
-      encoding: 'utf-8',
-      timeout: 5000,
-    }).trim().split('\n')[0];
-    return path || null;
-  } catch {
-    return null;
+  const { execSync } = require('child_process') as typeof import('child_process');
+  const { homedir } = require('os') as typeof import('os');
+
+  const home = homedir();
+
+  // Common install paths (bare name last — relies on PATH which may differ in Electron)
+  const candidates = [
+    `${home}/.local/bin/${name}`,
+    `${home}/.npm-global/bin/${name}`,
+    `/usr/local/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+    name,
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      execSync(`"${candidate}" --version 2>&1`, {
+        encoding: 'utf-8',
+        timeout: 5000,
+      });
+      return candidate;
+    } catch {
+      continue;
+    }
   }
+
+  return null;
 }

@@ -7,8 +7,9 @@
 
 import type { AgentProvider, AgentSession, AgentMessage, AgentResult, ExecuteOptions } from '../provider';
 import { resolveExecutable } from '../provider';
-import { ChildProcess, spawn } from 'node:child_process';
-import * as readline from 'node:readline';
+
+const { spawn } = require('child_process') as typeof import('child_process');
+const readline = require('readline') as typeof import('readline');
 
 const EXECUTABLE = 'claude';
 const DEFAULT_TIMEOUT = 10 * 60 * 1000; // 10 minutes
@@ -61,7 +62,7 @@ export const claudeCodeProvider: AgentProvider = {
   },
 
   execute(prompt: string, opts?: ExecuteOptions): AgentSession {
-    let proc: ChildProcess | null = null;
+    let proc: ReturnType<typeof spawn> | null = null;
     let aborted = false;
     let onMessage: ((msg: AgentMessage) => void) | null = null;
     let onDone: ((result: AgentResult) => void) | null = null;

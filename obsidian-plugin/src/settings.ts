@@ -234,24 +234,65 @@ export class TraceMindSettingTab extends PluginSettingTab {
 		// ============================================================
 		// 本地 Agent
 		// ============================================================
-		containerEl.createEl('h3', { text: '本地 Agent（可选）' });
+		containerEl.createEl('h3', { text: '本地 Agent' });
 		containerEl.createEl('p', {
-			text: '使用本地安装的 AI agent CLI（如 Claude Code）代替云端 API。需要先在终端安装对应的 CLI 工具。',
+			text: '启用后，在聊天模式的输入框左侧可选择本地安装的 AI agent CLI（Claude Code、Hermes 等）。',
 			cls: 'setting-item-description'
 		});
 
+		const statusEl = containerEl.createEl('div', { cls: 'tracemind-agent-status' });
+
 		new Setting(containerEl)
-			.setName('本地 Agent')
-			.setDesc('选择本地 agent 后，聊天模式将使用本地 CLI 而非云端 API。留空则使用云端 Provider。')
-			.addDropdown(dropdown => {
-				dropdown.addOption('', '不使用（云端 API）');
-				dropdown.addOption('claude-code', 'Claude Code');
-				dropdown.setValue(this.plugin.settings.localAgentProvider || '')
+			.setName('启用本地 Agent')
+			.setDesc('开启后系统将检测本机安装的 agent CLI，并在聊天输入框左侧提供选择器')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.localAgentEnabled)
 					.onChange(async (value) => {
-						this.plugin.settings.localAgentProvider = value;
+						this.plugin.settings.localAgentEnabled = value;
 						await this.plugin.saveSettings();
+						if (value) {
+							this.detectAndShowAgents(statusEl);
+						} else {
+							statusEl.empty();
+						}
 					});
 			});
+
+		if (this.plugin.settings.localAgentEnabled) {
+			this.detectAndShowAgents(statusEl);
+		}
+
+		// CSS
+		const agentStyle = document.createElement('style');
+		agentStyle.textContent = `
+			.tracemind-agent-status { margin: 0 0 16px 0; display: flex; flex-direction: column; gap: 6px; }
+			.tracemind-agent-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+			.tracemind-agent-dot { font-size: 12px; }
+			.tracemind-agent-label { color: var(--text-muted); }
+			.tracemind-agent-dot.available + .tracemind-agent-label { color: var(--text-normal); }
+		`;
+		containerEl.appendChild(agentStyle);
+	}
+
+	private async detectAndShowAgents(containerEl: HTMLElement) {
+		containerEl.empty();
+		const { resolveExecutable } = await import('./agent/provider');
+		const agents = [
+			{ key: 'claude-code', name: 'Claude Code', binary: 'claude' },
+			{ key: 'hermes', name: 'Hermes', binary: 'hermes' },
+		];
+
+		for (const agent of agents) {
+			const row = containerEl.createEl('div', { cls: 'tracemind-agent-row' });
+			const path = await resolveExecutable(agent.binary);
+			const available = !!path;
+			const dot = row.createEl('span', { cls: `tracemind-agent-dot ${available ? 'available' : 'unavailable'}` });
+			dot.setText(available ? '🟢' : '🔴');
+			row.createEl('span', {
+				text: `${agent.name} ${available ? '— 已检测到' : '— 未检测到，请确认已安装'}`,
+				cls: 'tracemind-agent-label'
+			});
+		}
 	}
 }
 
