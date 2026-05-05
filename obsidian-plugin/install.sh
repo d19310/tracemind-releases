@@ -102,9 +102,10 @@ create_vault_structure() {
 	mkdir -p "${VAULT_PATH}/Object"
 	mkdir -p "${VAULT_PATH}/Theme"
 
-	# TraceMind sessions & index
+	# TraceMind sessions, index & insights
 	mkdir -p "${VAULT_PATH}/TraceMind/sessions"
 	mkdir -p "${VAULT_PATH}/TraceMind/index"
+	mkdir -p "${VAULT_PATH}/TraceMind/insights"
 
 	local today
 	today="$(date +%Y-%m-%d)"
