@@ -686,6 +686,7 @@ class EntityManagerAdapter {
     if (!existing) {
       await this.app.vault.create(path, md);
     }
+    // If already exists, skip silently — caller should use update_entity
 
     // Update in-memory index
     const entry = cardToIndexEntry(md, path);

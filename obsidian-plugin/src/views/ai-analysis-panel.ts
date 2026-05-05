@@ -2754,7 +2754,11 @@ export class AIAnalysisPanelView extends ItemView {
 					case 'search_entity': {
 						const entry = entityManager.findEntity(action.name || '');
 						if (entry) {
-							results.push('找到实体：' + entry.name + ' (' + entry.cardType + ') — 文件：' + entry.filePath);
+							const info = ['找到实体：' + entry.name];
+							info.push('类型：' + entry.cardType);
+							if (entry.subtype) info.push('子类型：' + entry.subtype);
+							if (entry.maturity) info.push('成熟度：' + entry.maturity);
+							results.push(info.join('，'));
 						} else {
 							results.push('未找到实体：' + (action.name || ''));
 						}
@@ -2766,15 +2770,30 @@ export class AIAnalysisPanelView extends ItemView {
 							results.push('未找到实体：' + (action.name || ''));
 							break;
 						}
-						// Read full card content including interaction records
 						try {
 							const cardContent = await this.plugin.app.vault.adapter.read(found.filePath);
-							results.push('实体 ' + found.name + ' 的完整档案：\n' + cardContent);
+							// Parse frontmatter to give a clean summary alongside the raw content
+							const fmMatch = cardContent.match(/^---\n([\s\S]*?)\n---/);
+							const attrs: string[] = [];
+							if (fmMatch) {
+								for (const line of fmMatch[1].split('\n')) {
+									const ci = line.indexOf(':');
+									if (ci > 0) {
+										const k = line.slice(0, ci).trim();
+										const v = line.slice(ci + 1).trim();
+										if (k && v && k !== 'id' && k !== 'name') {
+											attrs.push(k + ': ' + v);
+										}
+									}
+								}
+							}
+							const body = cardContent.replace(/^---\n[\s\S]*?\n---\n?/, '').trim();
+							const summary = '=== ' + found.name + ' 档案摘要 ===\n类型：' + found.cardType + '\n属性：' + (attrs.length > 0 ? attrs.join('，') : '无') + '\n\n--- 完整内容 ---\n' + cardContent;
+							results.push(summary);
 						} catch {
 							const info = [found.name + ' [' + found.cardType + ']'];
 							if (found.maturity) info.push('成熟度：' + found.maturity);
 							if (found.subtype) info.push('子类型：' + found.subtype);
-							if (found.aliases?.length) info.push('别名：' + found.aliases.join('、'));
 							results.push(info.join('，'));
 						}
 						break;
@@ -2782,6 +2801,12 @@ export class AIAnalysisPanelView extends ItemView {
 					case 'create_entity': {
 						if (!action.name || !action.type) {
 							results.push('创建失败：缺少 name 或 type');
+							break;
+						}
+						// Check if entity already exists
+						const existingEntry = entityManager.findEntity(action.name);
+						if (existingEntry) {
+							results.push('实体已存在：' + action.name + ' (' + existingEntry.cardType + ')，请用 update_entity 修改');
 							break;
 						}
 						await entityManager.createEntity({
@@ -2855,6 +2880,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 		// Tool usage instructions
 		parts.push('\u4F60\u662F TraceMind \u7684 Vault \u7BA1\u5BB6\u52A9\u624B\u3002\u4F60\u53EF\u4EE5\u901A\u8FC7\u5D4C\u5165 [TRACEMIND_ACTION] \u5757\u6765\u6267\u884C\u64CD\u4F5C\u3002');
+		parts.push('\u4E0D\u8981\u8F93\u51FA\u601D\u8003\u8FC7\u7A0B\u3001\u5185\u5FC3\u72EC\u767D\u6216\u81EA\u95EE\u81EA\u7B54\u3002\u76F4\u63A5\u6267\u884C\u64CD\u4F5C\u5E76\u7ED9\u51FA\u7ED3\u679C\u3002');
 
 		// Today's date for diary lookup context
 		const today = new Date();
@@ -2878,7 +2904,9 @@ export class AIAnalysisPanelView extends ItemView {
 
 		parts.push('');
 		parts.push('\u91CD\u8981\u89C4\u5219\uFF1A');
-		parts.push('-\u5F53\u7528\u6237\u63D0\u53CA\u67D0\u4E2A\u5B9E\u4F53\u65F6\uFF0C\u4F18\u5148\u4F7F\u7528 get_entity \u67E5\u8BE2\u5176\u6863\u6848\uFF0C\u6863\u6848\u4E2D\u5DF2\u5305\u542B\u4E0E\u8BE5\u5B9E\u4F53\u76F8\u5173\u7684\u65E5\u8BB0\u4E92\u52A8\u8BB0\u5F55\u3002\u53EA\u6709\u5728\u6863\u6848\u4FE1\u606F\u4E0D\u8DB3\u65F6\u624D\u7528 get_diary \u8865\u5145\u67E5\u8BE2\u3002');
+		parts.push('- \u5F53\u7528\u6237\u63D0\u53CA\u67D0\u4E2A\u5B9E\u4F53\u65F6\uFF0C\u4F18\u5148\u4F7F\u7528 get_entity \u67E5\u8BE2\u5176\u6863\u6848\uFF0C\u6863\u6848\u4E2D\u5DF2\u5305\u542B\u4E0E\u8BE5\u5B9E\u4F53\u76F8\u5173\u7684\u65E5\u8BB0\u4E92\u52A8\u8BB0\u5F55\u3002\u53EA\u6709\u5728\u6863\u6848\u4FE1\u606F\u4E0D\u8DB3\u65F6\u624D\u7528 get_diary \u8865\u5145\u67E5\u8BE2\u3002');
+		parts.push('- \u521B\u5EFA\u65B0\u5B9E\u4F53\u524D\uFF0C\u5FC5\u987B\u5148\u7528 search_entity \u786E\u8BA4\u4E0D\u5B58\u5728\uFF0C\u907F\u514D\u91CD\u590D\u521B\u5EFA\u3002');
+		parts.push('- \u4FEE\u6539\u5B9E\u4F53\u524D\uFF0C\u5FC5\u987B\u5148\u7528 get_entity \u786E\u8BA4\u5B58\u5728\u5E76\u67E5\u770B\u5F53\u524D\u5C5E\u6027\u3002');
 
 		parts.push('');
 		parts.push('Vault \u7ED3\u6784\uFF1A');
@@ -2918,13 +2946,32 @@ export class AIAnalysisPanelView extends ItemView {
 	}
 
 	private stripThinking(content: string): string {
-		return content
+		let cleaned = content
 			.replace(/<[Tt]hinking>[\s\S]*?<\/[Tt]hinking>/gi, '')
 			.replace(/<[Tt]hink>[\s\S]*?<\/[Tt]hink>/gi, '')
-			.replace(/<think>[\s\S]*?<\/think>/gi, '')
 			.replace(/<\/?[Tt]hink>/g, '')
-			.replace(/<\/?[Tt]hinking>/g, '')
-			.trim();
+			.replace(/<\/?[Tt]hinking>/g, '');
+		// DeepSeek sometimes outputs reasoning as inline text without tags,
+		// interspersed before the actual response. We detect this pattern:
+		// long blocks of self-questioning/internal monologue followed by a clean response.
+		// Strategy: split by double newlines, keep only the last coherent paragraph.
+		const paragraphs = cleaned.split(/\n\n+/);
+		if (paragraphs.length > 2) {
+			// Check if earlier paragraphs look like internal monologue
+			const lastParagraph = paragraphs[paragraphs.length - 1];
+			// If the last paragraph is short and actionable (contains [TRACEMIND_ACTION] or looks like conclusion), keep only it
+			if (lastParagraph.length < 300 || /\[TRACEMIND_ACTION\]|^已|^✅|^好的/.test(lastParagraph.trim())) {
+				// Find the last substantial non-monologue paragraph
+				for (let i = paragraphs.length - 1; i >= 0; i--) {
+					const p = paragraphs[i].trim();
+					if (p.length > 0 && !/^(不过|但是|可能|也许|可以|需要|如果|那么|因为|所以|让我|我想|我判断|当前|查找|搜索|创建|更新|首先|然后|接着|另外|实际|根据|注意|重要)/.test(p)) {
+						cleaned = p;
+						break;
+					}
+				}
+			}
+		}
+		return cleaned.trim();
 	}
 
 	private async sendChatMessage(content: string) {
