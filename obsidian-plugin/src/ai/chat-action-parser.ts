@@ -36,7 +36,6 @@ export function parseChatResponse(raw: string): ParsedChatResponse {
   let match;
   while ((match = actionRegex.exec(raw)) !== null) {
     try {
-      // Strip whitespace around JSON
       const jsonStr = match[1].trim();
       const action = JSON.parse(jsonStr) as ChatAction;
       actions.push(action);
@@ -45,6 +44,14 @@ export function parseChatResponse(raw: string): ParsedChatResponse {
       // Invalid JSON — leave block in text as-is
     }
   }
+
+  // Clean up orphan tags and stray JSON (LLM may forget the opening tag)
+  // 1. Strip orphan [/TRACEMIND_ACTION]
+  text = text.replace(/\[\/TRACEMIND_ACTION\]/g, '');
+  // 2. Strip orphan [TRACEMIND_ACTION]
+  text = text.replace(/\[TRACEMIND_ACTION\]/g, '');
+  // 3. Strip stray JSON objects that look like actions (between text and end)
+  text = text.replace(/\n?\s*\{\s*"action"\s*:\s*"[^"]+"[\s\S]*?\}\s*$/g, '');
 
   return {
     text: text.trim(),

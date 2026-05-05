@@ -181,7 +181,7 @@ export class BlockEditorView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'TraceMind 日记';
+		return 'TraceMind 迹忆';
 	}
 
 	/**
@@ -213,15 +213,16 @@ export class BlockEditorView extends ItemView {
 			cls: 'lifewiki-diary-header'
 		});
 
-		// Date on left
-		header.createEl('h1', {
-			text: this.currentDate,
+		// Date on left with calendar icon
+		const dateEl = header.createEl('h1', {
 			cls: 'lifewiki-diary-date'
 		});
+		dateEl.createEl('span', { text: '\u{1F4C5}', cls: 'lifewiki-diary-date-icon' });
+		dateEl.createEl('span', { text: this.currentDate });
 
 		// Tagline on right
 		header.createEl('span', {
-			text: '日记是AI时代人生最大的复利',
+			text: '记录，是AI时代的人生复利。',
 			cls: 'lifewiki-diary-tagline'
 		});
 
@@ -338,6 +339,13 @@ export class BlockEditorView extends ItemView {
 				margin: 0;
 				color: var(--on-surface);
 				font-family: var(--font-body);
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.lifewiki-diary-date-icon {
+				font-size: 22px;
 			}
 
 			.lifewiki-diary-tagline {

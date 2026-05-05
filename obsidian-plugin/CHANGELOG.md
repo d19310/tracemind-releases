@@ -5,6 +5,13 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.3.2] - 2026-05-05
+
+### Fixed
+- **TRACEMIND_ACTION 残留** — parser 容错处理孤立标签和裸 JSON，streaming 过滤加强
+- **系统 prompt** — 明确标注开闭标签都不可省略，给出具体示例
+- **UI** — 日记视图日期前加 📅 emoji，slogan 优化，tab 标签改为 TraceMind 迹忆
+
 ## [1.3.1] - 2026-05-05
 
 ### Added

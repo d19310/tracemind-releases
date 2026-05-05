@@ -2907,11 +2907,12 @@ export class AIAnalysisPanelView extends ItemView {
 		}
 
 		parts.push('');
-		parts.push('\u5F53\u9700\u8981\u6267\u884C\u64CD\u4F5C\u65F6\uFF0C\u52A1\u5FC5\u4F7F\u7528\u4EE5\u4E0B\u7CBE\u786E\u683C\u5F0F\uFF08\u6CE8\u610F\u6CA1\u6709\u7A7A\u683C\uFF09\uFF1A');
+		parts.push('\u5F53\u9700\u8981\u6267\u884C\u64CD\u4F5C\u65F6\uFF0C\u5FC5\u987B\u4F7F\u7528\u4EE5\u4E0B\u5B8C\u6574\u683C\u5F0F\uFF08\u5F00\u59CB\u6807\u7B7E\u548C\u7ED3\u675F\u6807\u7B7E\u90FD\u4E0D\u80FD\u7701\u7565\uFF09\uFF1A');
 		parts.push('[TRACEMIND_ACTION]');
-		parts.push('{"action":"...","name":"..."}');
+		parts.push('{"action":"get_diary","date":"2026-05-05"}');
 		parts.push('[/TRACEMIND_ACTION]');
-		parts.push('\u7528\u53CB\u597D\u7684\u4E2D\u6587\u56DE\u7B54\u3002');
+		parts.push('');
+		parts.push('\u7136\u540E\u7EE7\u7EED\u7528\u53CB\u597D\u7684\u4E2D\u6587\u56DE\u7B54\u3002\u64CD\u4F5C\u5757\u4E4B\u5916\u4E0D\u8981\u51FA\u73B0\u4EFB\u4F55 JSON\u3002');
 
 		return parts.join('\n');
 	}
@@ -3066,9 +3067,12 @@ export class AIAnalysisPanelView extends ItemView {
 		const lastMsg = messages[messages.length - 1] as HTMLElement;
 		if (lastMsg) {
 			lastMsg.empty();
-			// Strip partial/incomplete TRACEMIND_ACTION blocks during streaming
-			const display = content.replace(/\[TRACEMIND_ACTION\][\s\S]*?\[\/TRACEMIND_ACTION\]/g, '')
-				.replace(/\[TRACEMIND_ACTION\][\s\S]*$/, ''); // incomplete opening block
+			// Strip TRACEMIND_ACTION blocks and orphan tags during streaming
+			const display = content
+				.replace(/\[TRACEMIND_ACTION\][\s\S]*?\[\/TRACEMIND_ACTION\]/g, '')
+				.replace(/\[TRACEMIND_ACTION\][\s\S]*$/, '')  // incomplete opening block
+				.replace(/\[\/TRACEMIND_ACTION\]/g, '')
+				.replace(/\[TRACEMIND_ACTION\]/g, '');
 			lastMsg.createEl('pre', { cls: 'lifewiki-chat-streaming', text: display || '...' });
 		}
 	}
