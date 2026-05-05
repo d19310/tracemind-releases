@@ -5,6 +5,11 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.4.0] - 2026-05-05
+
+### Added
+- **本地 Agent 集成** — 支持连接本地安装的 AI agent CLI（Claude Code），替代云端 API。设置中选择 "Claude Code" 后，聊天模式通过 `child_process.spawn()` 调本地 CLI，stdin/stdout JSON stream 通信
+
 ## [1.3.2] - 2026-05-05
 
 ### Fixed

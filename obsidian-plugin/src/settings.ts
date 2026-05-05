@@ -230,6 +230,28 @@ export class TraceMindSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+
+		// ============================================================
+		// 本地 Agent
+		// ============================================================
+		containerEl.createEl('h3', { text: '本地 Agent（可选）' });
+		containerEl.createEl('p', {
+			text: '使用本地安装的 AI agent CLI（如 Claude Code）代替云端 API。需要先在终端安装对应的 CLI 工具。',
+			cls: 'setting-item-description'
+		});
+
+		new Setting(containerEl)
+			.setName('本地 Agent')
+			.setDesc('选择本地 agent 后，聊天模式将使用本地 CLI 而非云端 API。留空则使用云端 Provider。')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', '不使用（云端 API）');
+				dropdown.addOption('claude-code', 'Claude Code');
+				dropdown.setValue(this.plugin.settings.localAgentProvider || '')
+					.onChange(async (value) => {
+						this.plugin.settings.localAgentProvider = value;
+						await this.plugin.saveSettings();
+					});
+			});
 	}
 }
 

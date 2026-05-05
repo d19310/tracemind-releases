@@ -9,7 +9,7 @@ const config = {
   target: 'es2022',
   outfile: 'main.js',
   format: 'cjs',
-  platform: 'browser',
+  platform: 'node',
   minify: production,
   sourcemap: production ? false : 'inline',
 };

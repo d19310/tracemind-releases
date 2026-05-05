@@ -2945,6 +2945,91 @@ export class AIAnalysisPanelView extends ItemView {
 		return parts.join('\n');
 	}
 
+	/**
+	 * Send a chat message via a local agent CLI (e.g., Claude Code).
+	 */
+	private async sendChatViaLocalAgent(
+		content: string,
+		systemMessage: ChatMessage,
+		messages: ChatMessage[],
+	) {
+		const sessionManager = this.plugin.getSessionManager();
+
+		try {
+			const { claudeCodeProvider } = await import('../agent/providers/claude-code');
+
+			// Build a combined prompt with system context
+			const fullPrompt = systemMessage.content + '\n\n---\n\n用户消息：' + content;
+
+			const session = claudeCodeProvider.execute(fullPrompt);
+
+			let firstDelta = true;
+			let fullText = '';
+
+			session.onMessage = (msg) => {
+				if (msg.type === 'text' && msg.content) {
+					if (firstDelta) {
+						this.hideThinkingIndicator();
+						this.addChatMessage('assistant', '');
+						firstDelta = false;
+					}
+					fullText += msg.content;
+					this.updateLastAssistantMessage(fullText);
+					this.scrollToBottom();
+				} else if (msg.type === 'tool-use') {
+					// Show tool use as a subtle indicator
+				}
+			};
+
+			session.onDone = async (result) => {
+				if (result.status === 'completed' && result.output) {
+					const cleanContent = this.stripThinking(result.output);
+					const parsed = parseChatResponse(cleanContent);
+
+					if (parsed.actions.length > 0) {
+						if (parsed.text) {
+							this.updateLastAssistantMessage(parsed.text);
+						}
+						await this.finalizeLastAssistantMessage();
+						const results = await this.executeChatActions(parsed.actions);
+						if (results.length > 0) {
+							sessionManager.addChatMessage({ role: 'assistant', content: parsed.text || cleanContent });
+							sessionManager.addChatMessage({ role: 'system', content: '操作结果：\n' + results.join('\n') });
+						}
+					} else {
+						if (parsed.text) {
+							this.updateLastAssistantMessage(parsed.text);
+							sessionManager.addChatMessage({ role: 'assistant', content: parsed.text });
+						} else {
+							sessionManager.addChatMessage({ role: 'assistant', content: cleanContent });
+						}
+						await this.finalizeLastAssistantMessage();
+					}
+				} else if (!firstDelta) {
+					// Already streamed some text
+					await this.finalizeLastAssistantMessage();
+				} else {
+					this.hideThinkingIndicator();
+					this.addChatMessage('assistant', '本地 Agent 返回空内容或执行失败：' + (result.error || '未知错误'));
+				}
+				this.isLoading = false;
+				this.updateSendBtnState();
+			};
+
+			session.onError = (error) => {
+				this.hideThinkingIndicator();
+				this.addChatMessage('assistant', '本地 Agent 调用失败: ' + error.message);
+				this.isLoading = false;
+				this.updateSendBtnState();
+			};
+		} catch (error) {
+			this.hideThinkingIndicator();
+			this.addChatMessage('assistant', '本地 Agent 启动失败: ' + (error as Error).message);
+			this.isLoading = false;
+			this.updateSendBtnState();
+		}
+	}
+
 	private stripThinking(content: string): string {
 		let cleaned = content
 			.replace(/<[Tt]hinking>[\s\S]*?<\/[Tt]hinking>/gi, '')
@@ -2994,6 +3079,13 @@ export class AIAnalysisPanelView extends ItemView {
 			role: 'system',
 			content: this.buildChatSystemPrompt(),
 		};
+
+		// Check if using a local agent provider
+		const localAgent = this.plugin.settings.localAgentProvider;
+		if (localAgent) {
+			await this.sendChatViaLocalAgent(content, systemMessage, messages);
+			return;
+		}
 
 		try {
 			let fullText = '';
