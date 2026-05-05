@@ -1,18 +1,16 @@
 # TraceMind Release Assets
 
-构建产物仓库，用于 [TraceMind Obsidian 插件](https://github.com/d19310/TraceMind) 的 Release 分发。
+[TraceMind Obsidian 插件](https://github.com/d19310/TraceMind) 的构建产物仓库，用于 Release 分发。
 
 ## 快速安装
 
 ```bash
-curl -fsSL -o install.sh "https://raw.githubusercontent.com/d19310/tracemind-releases/main/install.sh"
+curl -fsSL -o install.sh "https://github.com/d19310/tracemind-releases/releases/latest/download/install.sh"
 chmod +x install.sh
 ./install.sh
 ```
 
-运行后会依次提示：
-1. **Vault 名称**（默认 `TraceMind`）
-2. **安装目录**（默认 `~/Documents`）
+运行后按提示输入 Vault 名称和安装目录即可。
 
 ## 安装后
 
@@ -20,8 +18,6 @@ chmod +x install.sh
 2. 设置 → 社区插件 → TraceMind → 启用（如未自动启用）
 3. 打开 TraceMind 设置，配置 AI Provider
 
-## 版本
+## 最新版本
 
-| 版本 | 日期 | 说明 |
-|------|------|------|
-| v1.0.0 | 2026-05-03 | 首次发布，Context Card 模型 |
+[![Release](https://img.shields.io/github/v/release/d19310/tracemind-releases)](https://github.com/d19310/tracemind-releases/releases/latest)
