@@ -63,13 +63,13 @@ const DEFAULT_CONFIG: EntityTypeConfigFile = {
     theme: {
       label: '主题',
       subtypes: {
-        domain: { priority: 'P0', label: '领域' },
-        habit: { priority: 'P0', label: '习惯' },
-        state: { priority: 'P0', label: '状态' },
-        pending_decision: { priority: 'P0', label: '待决定' },
+        friction:  { priority: 'P0', label: '摩擦', hints: ['反复遇到的阻力、卡点、返工、低效、冲突', '如：方向反复变化、需求边界不清、会议没有结论'] },
+        goal:      { priority: 'P0', label: '目标', hints: ['持续想推进、达成、改善或建立的方向', '如：提升表达能力、减少无效会议、建立个人记忆系统'] },
+        judgment:  { priority: 'P0', label: '判断', hints: ['对人或事形成的看法、评价、立场', '如：当前项目价值不清晰、Markdown-first 更适合 MVP'] },
+        idea:      { priority: 'P0', label: '想法', hints: ['灵感、兴趣、探索欲、反复思考的问题', '如：AI记忆系统设计、如何让碎片记录获得洞察'] },
       },
       p0: ['subtype'],
-      p1: ['occurrenceCount'],
+      p1: ['occurrenceCount', 'context'],
       p2: ['context'],
     },
   },
@@ -93,40 +93,16 @@ const DEFAULT_CONFIG: EntityTypeConfigFile = {
   },
 };
 
-/** In-memory config, overwritten by loadEntityTypeConfig() */
+/** In-memory config, loaded at startup */
 let runtimeConfig: EntityTypeConfigFile = { ...DEFAULT_CONFIG };
 
-/** Path to the config file in the vault */
-export const CONFIG_PATH = 'TraceMind/entity-type-config.json';
-
 /**
- * Load config from vault JSON file. Falls back to defaults if missing/invalid.
+ * Initialize entity type config from DEFAULT_CONFIG.
+ * No vault file I/O — all configuration lives in code.
  */
-export async function loadEntityTypeConfig(
-  readFile: (path: string) => Promise<string>,
-  writeFile?: (path: string, content: string) => Promise<void>,
-): Promise<void> {
-  try {
-    const content = await readFile(CONFIG_PATH);
-    const parsed = JSON.parse(content) as EntityTypeConfigFile;
-    if (parsed.entityTypes && typeof parsed.entityTypes === 'object') {
-      runtimeConfig = parsed;
-      console.log('[TraceMind] Loaded entity type config from vault');
-      return;
-    }
-  } catch {
-    // File doesn't exist or is invalid — create default
-  }
-
-  // Write default config if writeFile is available
-  if (writeFile) {
-    try {
-      await writeFile(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2));
-    } catch {
-      // Can't write — use in-memory defaults
-    }
-  }
+export function loadEntityTypeConfig(): void {
   runtimeConfig = { ...DEFAULT_CONFIG };
+  console.log('[TraceMind] Loaded entity type config');
 }
 
 /** Get current runtime config */
@@ -169,6 +145,12 @@ export function buildExtractionTypeGuide(): string {
   const themeSubs = config.theme.subtypes || {};
   const themeList = Object.keys(themeSubs).join('、');
   lines.push('- "theme": ' + config.theme.label + '，可用 subtype：' + themeList);
+
+  for (const [key, sub] of Object.entries(themeSubs)) {
+    if (sub.hints && sub.hints.length > 0) {
+      lines.push('  - ' + key + ' 识别：' + sub.hints.join('；'));
+    }
+  }
 
   return lines.join('\n');
 }

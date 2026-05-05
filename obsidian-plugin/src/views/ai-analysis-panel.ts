@@ -11,7 +11,7 @@ import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './block-editor';
 import { CardType, MaturityLevel } from '../core/context-card';
 import type { AnalyzedEntity } from '../ai/analysis-service';
 import { parseChatResponse, type ChatAction } from '../ai/chat-action-parser';
-import { buildClarificationAttributeGuide } from '../ai/entity-type-config';
+import { buildClarificationAttributeGuide, getSubtypeLabel } from '../ai/entity-type-config';
 import type { InsightStreamCallbacks } from '../ai/daily-insight';
 import { computeContentHash } from '../ai/daily-insight';
 
@@ -2265,7 +2265,7 @@ export class AIAnalysisPanelView extends ItemView {
 			if (entry.maturity) chips.push(this.maturityLabel(entry.maturity as MaturityLevel));
 			chips.push(`置信度 ${Math.round((entry.confidence || 0) * 100)}%`);
 			if (entry.relationCount > 0) chips.push(`关联 ${entry.relationCount}`);
-			if (entry.subtype) chips.push(entry.subtype);
+			if (entry.subtype) chips.push(getSubtypeLabel(entry.cardType, entry.subtype) || entry.subtype);
 
 			for (const chip of chips) {
 				const isMaturity = chip.startsWith('L');
@@ -2834,7 +2834,7 @@ export class AIAnalysisPanelView extends ItemView {
 		parts.push('Vault \u7ED3\u6784\uFF1A');
 		parts.push('- Person/{name}.md \u2014 \u5C5E\u6027: company, role, relationship_to_user, aliases');
 		parts.push('- Object/{name}.md \u2014 \u5C5E\u6027: subtype (project/task/product/technology/document/location/other), status, deadline');
-		parts.push('- Theme/{name}.md \u2014 \u5C5E\u6027: subtype (domain/habit/state/pending_decision)');
+		parts.push('- Theme/{name}.md \u2014 \u5C5E\u6027: subtype (friction/\u6469\u64E6 goal/\u76EE\u6807 judgment/\u5224\u65AD idea/\u60F3\u6CD5)');
 		parts.push('- Daily/YYYY-MM-DD.md \u2014 \u65E5\u8BB0');
 
 		// Entity index summary
@@ -3042,7 +3042,7 @@ export class AIAnalysisPanelView extends ItemView {
 						metadata.description = entity.context;
 					}
 				} else if (entity.type === 'theme') {
-					metadata.subtype = entity.smallType || 'domain';
+					metadata.subtype = entity.smallType || 'friction';
 				}
 
 				const summary = entity.context || `从日记中归档的${entity.type}`;

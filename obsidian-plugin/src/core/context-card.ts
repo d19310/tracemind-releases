@@ -56,7 +56,7 @@ export const OBJECT_P1_ATTRIBUTES = ['deadline', 'description'];
 export const OBJECT_P2_ATTRIBUTES = ['priority', 'goals'];
 export const THEME_P0_ATTRIBUTES = ['subtype'];
 export const THEME_P1_ATTRIBUTES = ['occurrenceCount', 'context'];
-export const THEME_P2_ATTRIBUTES = ['goals', 'emotions'];
+export const THEME_P2_ATTRIBUTES = ['context'];
 
 /**
  * Valid Object subtypes with their priority levels
@@ -76,7 +76,7 @@ export const VALID_OBJECT_SUBTYPES = Object.keys(OBJECT_SUBTYPE_PRIORITY);
 /**
  * Valid Theme subtypes
  */
-export const VALID_THEME_SUBTYPES = ['domain', 'habit', 'state', 'pending_decision'] as const;
+export const VALID_THEME_SUBTYPES = ['friction', 'goal', 'judgment', 'idea'] as const;
 
 /**
  * Default subtype for each card type
@@ -84,7 +84,7 @@ export const VALID_THEME_SUBTYPES = ['domain', 'habit', 'state', 'pending_decisi
 const DEFAULT_SUBTYPES: Record<CardType, string | undefined> = {
   person: undefined,
   object: 'other',
-  theme: 'domain',
+  theme: 'friction',
 };
 
 /**

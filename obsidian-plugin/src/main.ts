@@ -74,14 +74,8 @@ export class TraceMindPlugin extends Plugin {
       await this.rebuildEntityIndex();
       this.userProfile = await loadProfile(this.app);
 
-      // Load entity type config from vault (or create default)
-      await loadEntityTypeConfig(
-        (path: string) => this.app.vault.adapter.read(path),
-        async (path: string, content: string) => {
-          await ensureFolder(this.app, 'TraceMind');
-          await this.app.vault.create(path, content);
-        },
-      );
+      // Load entity type config
+      loadEntityTypeConfig();
 
       // Initialize adapters with real I/O
       this.entityManager = new EntityManagerAdapter(this.app, this);

@@ -7,6 +7,7 @@ import yaml from 'js-yaml';
 const stringify = yaml.dump;
 const load = yaml.load;
 import { ContextCard, ContextCardInput, CardType, MaturityLevel, CardStatus, generateEntityId } from '../core/context-card';
+import { getSubtypeLabel } from '../ai/entity-type-config';
 
 export { ContextCard } from '../core/context-card';
 
@@ -165,13 +166,13 @@ function formatAttributeSummary(card: ContextCard): string[] {
   }
 
   if (card.cardType === 'object') {
-    if (card.attributes.subtype) lines.push('- \u7C7B\u578B\uFF1A' + card.attributes.subtype);
+    if (card.attributes.subtype) lines.push('- \u7C7B\u578B\uFF1A' + (getSubtypeLabel(card.cardType, card.attributes.subtype as string) || card.attributes.subtype));
     if (card.attributes.status) lines.push('- \u72B6\u6001\uFF1A' + card.attributes.status);
     if (card.attributes.deadline) lines.push('- \u622A\u6B62\u65E5\u671F\uFF1A' + card.attributes.deadline);
   }
 
   if (card.cardType === 'theme') {
-    if (card.attributes.subtype) lines.push('- \u7C7B\u578B\uFF1A' + card.attributes.subtype);
+    if (card.attributes.subtype) lines.push('- \u7C7B\u578B\uFF1A' + (getSubtypeLabel(card.cardType, card.attributes.subtype as string) || card.attributes.subtype));
     if (card.attributes.occurrenceCount) lines.push('- \u51FA\u73B0\u6B21\u6570\uFF1A' + card.attributes.occurrenceCount);
   }
 

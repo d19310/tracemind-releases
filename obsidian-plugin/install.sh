@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# TraceMind v1.2.2 installer
+# TraceMind v1.3.0 installer
 # Creates or updates an Obsidian vault and installs the TraceMind plugin.
 #
 
@@ -14,7 +14,7 @@ NC='\033[0m'
 
 PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
-VERSION="v1.2.2"
+VERSION="v1.3.0"
 GITHUB_REPO="d19310/tracemind-releases"
 VAULT_NAME="TraceMind"
 VAULT_PARENT_DIR="$HOME/Documents"
@@ -76,7 +76,7 @@ prompt_vault_config() {
 confirm_install() {
 	echo ""
 	echo "========================================"
-	echo "       TraceMind v1.2.2 安装确认"
+	echo "       TraceMind v1.3.0 安装确认"
 	echo "========================================"
 	echo ""
 	echo "Vault: ${VAULT_PATH}"
@@ -163,7 +163,7 @@ enable_plugin_if_safe() {
 show_completion() {
 	echo ""
 	echo "========================================"
-	log_info "TraceMind v1.2.2 安装完成"
+	log_info "TraceMind v1.3.0 安装完成"
 	echo "========================================"
 	echo ""
 	echo "Vault: ${VAULT_PATH}"
@@ -179,7 +179,7 @@ show_completion() {
 main() {
 	echo ""
 	echo "========================================"
-	echo "       TraceMind v1.2.2 安装向导"
+	echo "       TraceMind v1.3.0 安装向导"
 	echo "========================================"
 
 	check_system

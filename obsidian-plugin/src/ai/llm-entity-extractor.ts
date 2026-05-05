@@ -92,7 +92,7 @@ ${buildExtractionTypeGuide()}`;
   "entities": [
     { "name": "张三", "type": "person", "confidence": 0.9 },
     { "name": "Q2计划", "type": "object", "subtype": "project", "confidence": 0.8 },
-    { "name": "H200供货紧张", "type": "theme", "confidence": 0.65 }
+    { "name": "方向反复变化", "type": "theme", "subtype": "friction", "confidence": 0.65 }
   ]
 }
 

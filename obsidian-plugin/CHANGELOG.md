@@ -5,6 +5,17 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.3.0] - 2026-05-05
+
+### Changed
+- **Theme 重新定义** — 4 个新 subtype 替代旧的定义：friction(摩擦)/goal(目标)/judgment(判断)/idea(想法)，每个带 LLM 识别指引
+- **配置简化** — entity-type-config 去掉 vault JSON 文件，纯代码管理，无需用户升级
+- **今日洞察"主题动态"强化** — 按 subtype 分类列出新增/强化/消退的主题
+
+### Fixed
+- Theme subtype UI 显示中文 label 代替 raw key
+- P2 属性不一致修复 (context-card.ts 与 entity-type-config.ts 对齐)
+
 ## [1.2.2] - 2026-05-05
 
 ### Changed
