@@ -5,6 +5,16 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.2.2] - 2026-05-05
+
+### Changed
+- **AI 分析对话流式输出** — 澄清对话中所有 assistant 消息改为逐字打字动画，体验更自然
+- **澄清问题 subtype 提示** — object/theme 实体的提问中嵌入 subtype 标签（如 "这个**任务**能介绍一下吗？"），用户可纠正 subtype
+- **聊天对话 SSE 流式** — chat 模式下 LLM 回复改为真实 SSE streaming，配合 subtype 纠正流程
+
+### Fixed
+- AI 分析面板 subtype 纠正支持
+
 ## [1.2.1] - 2026-05-05
 
 ### Fixed

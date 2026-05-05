@@ -135,6 +135,18 @@ export function getEntityTypeConfig(): EntityTypeConfigFile {
 }
 
 /**
+ * Get the Chinese label for a subtype of a given entity type.
+ * E.g., getSubtypeLabel('object', 'task') → '任务'.
+ * Returns empty string if entity type or subtype not found.
+ */
+export function getSubtypeLabel(entityType: string, subtype?: string): string {
+  if (!subtype) return '';
+  const config = getEntityTypeConfig().entityTypes;
+  const typeCfg = config[entityType];
+  return typeCfg?.subtypes?.[subtype]?.label || '';
+}
+
+/**
  * Build the entity type description for LLM extraction prompts.
  */
 export function buildExtractionTypeGuide(): string {

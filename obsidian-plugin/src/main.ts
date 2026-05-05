@@ -1148,6 +1148,34 @@ class AIProviderAdapter {
   }
 
   /**
+   * Stream chat messages with real SSE streaming.
+   * Falls back to non-streaming chat if streamChat is unavailable.
+   */
+  async streamChat(
+    messages: ChatMessage[],
+    callbacks: { onDelta: (text: string) => void; onDone: (fullText: string) => void; onError: (error: Error) => void },
+    context?: 'analysis' | 'chat',
+  ): Promise<void> {
+    const provider = this.getProviderForContext(context ?? 'chat');
+    if (!provider) {
+      callbacks.onError(new Error('No AI provider configured'));
+      return;
+    }
+
+    const { streamChat: sseChat } = await import('./ai/provider-config');
+    await sseChat(
+      messages.map(m => ({ role: m.role, content: m.content })),
+      {
+        provider: 'openai' as const,
+        apiKey: provider.apiKey,
+        model: provider.model,
+        baseUrl: provider.baseUrl,
+      },
+      callbacks,
+    );
+  }
+
+  /**
    * Analyze a diary block using LLM entity extraction.
    */
   async analyzeBlock(content: string, blockId = ''): Promise<any> {

@@ -1654,7 +1654,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 		let summary = '';
 		if (allEntities.length === 0) {
-			this.addChatMessage('assistant', '\u8FD9\u6761\u65E5\u8BB0\u6682\u65F6\u6CA1\u6709\u9700\u8981\u786E\u8BA4\u5F52\u6863\u7684\u5185\u5BB9\u3002');
+			await this.streamChatMessage('\u8FD9\u6761\u65E5\u8BB0\u6682\u65F6\u6CA1\u6709\u9700\u8981\u786E\u8BA4\u5F52\u6863\u7684\u5185\u5BB9\u3002');
 			this.clarificationPhase = 'complete';
 			return;
 		}
@@ -1667,13 +1667,13 @@ export class AIAnalysisPanelView extends ItemView {
 		} else {
 			summary = '\u8FD9\u6761\u65E5\u8BB0\u4E2D\u63D0\u5230\u7684 ' + archivedNames.join('\u3001') + ' \u6211\u90FD\u4E86\u89E3\u3002';
 		}
-		this.addChatMessage('assistant', summary);
+		await this.streamChatMessage(summary);
 
 		// Start clarification if there are new entities
 		if (this.clarificationQueue.length > 0) {
 			this.clarificationPhase = 'clarifying';
 			const firstName = '**' + this.clarificationQueue[0].name + '**';
-			this.addChatMessage('assistant', '\u5148\u4ECE ' + firstName + ' \u5F00\u59CB\u5427\u3002');
+			await this.streamChatMessage('\u5148\u4ECE ' + firstName + ' \u5F00\u59CB\u5427\u3002');
 			setTimeout(async () => { await this.askCurrentEntityQuestion(); }, 500);
 		} else {
 			// No new entities — check if we should ask about known entities
@@ -1695,7 +1695,7 @@ export class AIAnalysisPanelView extends ItemView {
 		const entity = this.clarificationQueue[this.currentEntityIndex];
 		const question = entity.clarificationQuestions?.[0] ?? '\u80FD\u544A\u8BC9\u6211\u5173\u4E8E\u300C' + entity.name + '\u300D\u7684\u66F4\u591A\u4FE1\u606F\u5417\uFF1F';
 
-		this.addChatMessage('assistant', question);
+		await this.streamChatMessage(question);
 		this.scrollToBottom();
 
 		if (this.inputTextarea) {
@@ -1709,14 +1709,14 @@ export class AIAnalysisPanelView extends ItemView {
 	 */
 	private async skipCurrentEntity() {
 		const skipName = this.clarificationQueue[this.currentEntityIndex].name;
-		this.addChatMessage('assistant', '\u597D\u7684\uFF0C\u5148\u8DF3\u8FC7 **' + skipName + '**\u3002');
+		await this.streamChatMessage('\u597D\u7684\uFF0C\u5148\u8DF3\u8FC7 **' + skipName + '**\u3002');
 		this.currentEntityIndex++;
 		this.clarificationPhase = 'clarifying';
 		if (this.currentEntityIndex >= this.clarificationQueue.length) {
 			await this.finishClarification();
 		} else {
 			const nextName = this.clarificationQueue[this.currentEntityIndex].name;
-			this.addChatMessage('assistant', '\u518D\u6765\u770B\u770B **' + nextName + '**\u3002');
+			await this.streamChatMessage('\u518D\u6765\u770B\u770B **' + nextName + '**\u3002');
 			await this.askCurrentEntityQuestion();
 		}
 	}
@@ -1729,7 +1729,7 @@ export class AIAnalysisPanelView extends ItemView {
 		if (this.knownEntities.length > 0 && this.clarificationPhase !== 'review_known') {
 			this.clarificationPhase = 'review_known';
 			const names = this.knownEntities.map(function(e: EntityPreview) { return '**' + e.name + '**'; }).join('\u3001');
-			this.addChatMessage('assistant', '\u5BF9\u4E86\uFF0C' + names + ' \u4F60\u8FD8\u6709\u65B0\u7684\u4FE1\u606F\u8981\u8865\u5145\u5417\uFF1F\u6CA1\u6709\u7684\u8BDD\u8BF4\u201C\u6CA1\u6709\u4E86\u201D\u5C31\u597D\u3002');
+			await this.streamChatMessage('\u5BF9\u4E86\uFF0C' + names + ' \u4F60\u8FD8\u6709\u65B0\u7684\u4FE1\u606F\u8981\u8865\u5145\u5417\uFF1F\u6CA1\u6709\u7684\u8BDD\u8BF4\u201C\u6CA1\u6709\u4E86\u201D\u5C31\u597D\u3002');
 			this.scrollToBottom();
 			if (this.inputTextarea) {
 				this.inputTextarea.placeholder = '\u8F93\u5165\u8865\u5145\u4FE1\u606F\uFF0C\u6216\u8BF4\u201C\u6CA1\u6709\u4E86\u201D\u2026';
@@ -1772,9 +1772,9 @@ export class AIAnalysisPanelView extends ItemView {
 
 		if (this.allSessionEntities.length > 0) {
 			const names = this.allSessionEntities.map(function(e: EntityPreview) { return '**' + e.name + '**'; }).join('\u3001');
-			this.addChatMessage('assistant', '\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002' + names + ' \u5DF2\u66F4\u65B0\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
+			await this.streamChatMessage('\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002' + names + ' \u5DF2\u66F4\u65B0\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
 		} else {
-			this.addChatMessage('assistant', '\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
+			await this.streamChatMessage('\u597D\u4E86\uFF0C\u8FD9\u6B21\u5148\u5230\u8FD9\u91CC\u3002\u53EF\u4EE5\u5728\u5DE6\u4FA7\u6587\u4EF6\u5217\u8868\u4E2D\u67E5\u770B\u3002\u6709\u7A7A\u518D\u7EE7\u7EED\u8865\u5145\u3002');
 		}
 		this.scrollToBottom();
 
@@ -2374,7 +2374,7 @@ export class AIAnalysisPanelView extends ItemView {
 				this.autoResizeTextarea();
 				this.updateSendBtnState();
 				this.addChatMessage('user', content);
-				this.addChatMessage('assistant', '\u597D\u7684\uFF0C\u90A3\u5C31\u5230\u8FD9\u91CC\u3002');
+				await this.streamChatMessage('\u597D\u7684\uFF0C\u90A3\u5C31\u5230\u8FD9\u91CC\u3002');
 				this.knownEntities = [];
 				await this.finishClarification();
 				this.isLoading = false;
@@ -2426,7 +2426,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 				// Use LLM to parse the user's response for attribute extraction
 				const parsedAttrs = await this.parseClarificationResponse(content, entity);
-				this.addChatMessage('assistant', parsedAttrs.acknowledgment);
+				await this.streamChatMessage(parsedAttrs.acknowledgment);
 
 				// Always save Context Card — even if no attributes were extracted
 				await this.updateEntityFromClarification(entity, parsedAttrs.attributes);
@@ -2437,7 +2437,7 @@ export class AIAnalysisPanelView extends ItemView {
 					await this.finishClarification();
 				} else {
 					const next = this.clarificationQueue[this.currentEntityIndex];
-					this.addChatMessage('assistant', '\u597D\u7684\uFF0C\u518D\u6765\u770B\u770B **' + next.name + '**\u3002');
+					await this.streamChatMessage('\u597D\u7684\uFF0C\u518D\u6765\u770B\u770B **' + next.name + '**\u3002');
 					setTimeout(async () => { await this.askCurrentEntityQuestion(); }, 300);
 				}
 			} else if (this.clarificationPhase === 'review_known') {
@@ -2462,7 +2462,7 @@ export class AIAnalysisPanelView extends ItemView {
 							await this.updateEntityFromClarification(known, attrs);
 						}
 					}
-					this.addChatMessage('assistant', '\u5DF2\u66F4\u65B0\u4E86 ' + this.knownEntities.length + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
+					await this.streamChatMessage('\u5DF2\u66F4\u65B0\u4E86 ' + this.knownEntities.length + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
 					this.knownEntities = [];
 					await this.finishClarification();
 				}
@@ -2889,65 +2889,139 @@ export class AIAnalysisPanelView extends ItemView {
 		const sessionManager = this.plugin.getSessionManager();
 		sessionManager.addChatMessage({ role: 'user', content });
 
+		const aiProvider = this.plugin.getAIProvider();
+		const chatSession = sessionManager.getChatSession();
+		const messages: ChatMessage[] = chatSession?.messages || [];
+		const systemMessage: ChatMessage = {
+			role: 'system',
+			content: this.buildChatSystemPrompt(),
+		};
+
 		try {
-			const aiProvider = this.plugin.getAIProvider();
-			const chatSession = sessionManager.getChatSession();
-			const messages: ChatMessage[] = chatSession?.messages || [];
-			const systemMessage: ChatMessage = {
-				role: 'system',
-				content: this.buildChatSystemPrompt(),
-			};
-			const response = await aiProvider.chat([systemMessage, ...messages], 'chat');
+			let fullText = '';
+			let firstDelta = true;
 
-			this.hideThinkingIndicator();
-
-			if (response.content) {
-				const cleanContent = this.stripThinking(response.content);
-
-				// Parse ACTION blocks and execute them
-				const parsed = parseChatResponse(cleanContent);
-
-				if (parsed.actions.length > 0) {
-					// Show interim text first
-					if (parsed.text) {
-						await this.streamChatMessage(parsed.text);
-					}
-
-					// Execute actions
-					const results = await this.executeChatActions(parsed.actions);
-
-					// Feed results back to LLM for follow-up response
-					if (results.length > 0) {
-						sessionManager.addChatMessage({ role: 'assistant', content: parsed.text || '' });
-						sessionManager.addChatMessage({
-							role: 'system',
-							content: '操作结果：\n' + results.join('\n'),
-						});
-
-						const followUpMessages = sessionManager.getChatSession().messages;
-						const followUp = await aiProvider.chat([systemMessage, ...followUpMessages], 'chat');
-						const followUpText = this.stripThinking(followUp.content);
-						if (followUpText) {
-							await this.streamChatMessage(followUpText);
-							sessionManager.addChatMessage({ role: 'assistant', content: followUpText });
+			await aiProvider.streamChat(
+				[systemMessage, ...messages],
+				{
+					onDelta: (text: string) => {
+						if (firstDelta) {
+							this.hideThinkingIndicator();
+							this.addChatMessage('assistant', '');
+							firstDelta = false;
 						}
-					}
-				} else {
-					// No actions — just show the response
-					if (parsed.text) {
-						await this.streamChatMessage(parsed.text);
-						sessionManager.addChatMessage({ role: 'assistant', content: parsed.text });
-					}
-				}
-			}
+						fullText += text;
+						// Update the last assistant message with accumulated text
+						this.updateLastAssistantMessage(fullText);
+						this.scrollToBottom();
+					},
+					onDone: async () => {
+						if (!fullText) {
+							this.hideThinkingIndicator();
+							this.addChatMessage('assistant', '抱歉，AI 返回了空内容。');
+							this.isLoading = false;
+							this.updateSendBtnState();
+							return;
+						}
+
+						const cleanContent = this.stripThinking(fullText);
+						const parsed = parseChatResponse(cleanContent);
+
+						if (parsed.actions.length > 0) {
+							// Replace the streaming text with parsed visible text
+							if (parsed.text) {
+								this.updateLastAssistantMessage(parsed.text);
+							}
+
+							// Execute actions
+							const results = await this.executeChatActions(parsed.actions);
+
+							// Feed results back to LLM for follow-up response
+							if (results.length > 0) {
+								sessionManager.addChatMessage({ role: 'assistant', content: parsed.text || cleanContent });
+								sessionManager.addChatMessage({
+									role: 'system',
+									content: '操作结果：\n' + results.join('\n'),
+								});
+
+								const followUpMessages = sessionManager.getChatSession().messages;
+								const followUpSystemMessage: ChatMessage = {
+									role: 'system',
+									content: this.buildChatSystemPrompt(),
+								};
+
+								// Stream the follow-up too
+								let followUpText = '';
+								await aiProvider.streamChat(
+									[followUpSystemMessage, ...followUpMessages],
+									{
+										onDelta: (text: string) => {
+											followUpText += text;
+											// Append to the same message
+											const currentContent = this.getLastAssistantContent() || '';
+											this.updateLastAssistantMessage(currentContent + text);
+											this.scrollToBottom();
+										},
+										onDone: () => {
+											if (followUpText) {
+												sessionManager.addChatMessage({ role: 'assistant', content: followUpText });
+											}
+										},
+										onError: (error: Error) => {
+											console.error('Follow-up AI stream error:', error);
+										},
+									},
+									'chat',
+								);
+							}
+						} else {
+							// No actions — text already streamed
+							if (parsed.text) {
+								this.updateLastAssistantMessage(parsed.text);
+								sessionManager.addChatMessage({ role: 'assistant', content: parsed.text });
+							} else {
+								sessionManager.addChatMessage({ role: 'assistant', content: cleanContent });
+							}
+						}
+
+						this.isLoading = false;
+						this.updateSendBtnState();
+					},
+					onError: (error: Error) => {
+						console.error('AI chat error:', error);
+						this.hideThinkingIndicator();
+						this.addChatMessage('assistant', '抱歉，AI 响应失败: ' + error.message);
+						this.isLoading = false;
+						this.updateSendBtnState();
+					},
+				},
+				'chat',
+			);
 		} catch (error) {
 			console.error('AI chat error:', error);
 			this.hideThinkingIndicator();
 			this.addChatMessage('assistant', '抱歉，AI 响应失败: ' + (error as Error).message);
+			this.isLoading = false;
+			this.updateSendBtnState();
 		}
+	}
 
-		this.isLoading = false;
-		this.updateSendBtnState();
+	/** Update the content of the last assistant message element */
+	private updateLastAssistantMessage(content: string) {
+		if (!this.chatMessagesEl) return;
+		const messages = this.chatMessagesEl.querySelectorAll('.lifewiki-chat-msg.assistant');
+		const lastMsg = messages[messages.length - 1] as HTMLElement;
+		if (lastMsg) {
+			this.renderMessageContent(lastMsg, content);
+		}
+	}
+
+	/** Get the text content of the last assistant message */
+	private getLastAssistantContent(): string {
+		if (!this.chatMessagesEl) return '';
+		const messages = this.chatMessagesEl.querySelectorAll('.lifewiki-chat-msg.assistant');
+		const lastMsg = messages[messages.length - 1] as HTMLElement;
+		return lastMsg?.textContent || '';
 	}
 
 	private async handleEntityArchiving(entities: Array<{ name: string; type: 'person' | 'object' | 'theme'; smallType: string; context: string }>) {

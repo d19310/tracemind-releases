@@ -52,15 +52,50 @@ export interface LLMConfig {
 /**
  * Generate clarification questions from a knowledge gap
  */
-function gapToQuestion(gap: KnowledgeGap): string {
+/** Subtype-specific question templates for object entities — subtype mapped to natural phrasing */
+const OBJECT_SUBTYPE_QUESTIONS: Record<string, string> = {
+  project:    '\u8FD9\u4E2A**\u9879\u76EE**\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u65F6\u95F4\u8282\u70B9\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002',
+  task:       '\u8FD9\u4E2A**\u4EFB\u52A1**\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u65F6\u95F4\u8282\u70B9\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002',
+  product:    '\u8FD9\u4E2A**\u4EA7\u54C1**\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u5173\u952E\u7279\u6027\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002',
+  technology: '\u8FD9\u4E2A**\u6280\u672F**\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u4E3B\u8981\u7528\u9014\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002',
+  document:   '\u8FD9\u4E2A**\u6587\u6863**\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u4E3B\u8981\u7528\u9014\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002',
+  location:   '\u8FD9\u4E2A**\u5730\u70B9**\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5728\u54EA\u91CC\u3001\u6709\u4EC0\u4E48\u7279\u522B\u4E4B\u5904\u7B49\u3002',
+};
+
+/** Subtype-specific question templates for theme entities */
+const THEME_SUBTYPE_QUESTIONS: Record<string, string> = {
+  domain:           '\u8FD9\u4E2A**\u9886\u57DF\u4E3B\u9898**\u80FD\u804A\u804A\u5417\uFF1F\u6BD4\u5982\u5F71\u54CD\u6709\u591A\u5927\u3001\u6301\u7EED\u591A\u4E45\u4E86\uFF1F',
+  habit:            '\u8FD9\u4E2A**\u4E60\u60EF**\u80FD\u804A\u804A\u5417\uFF1F\u6BD4\u5982\u9891\u7387\u3001\u5BF9\u751F\u6D3B\u7684\u5F71\u54CD\u7B49\u3002',
+  state:            '\u8FD9\u4E2A**\u72B6\u6001**\u80FD\u804A\u804A\u5417\uFF1F\u6BD4\u5982\u4ECE\u4EC0\u4E48\u65F6\u5019\u5F00\u59CB\u7684\u3001\u53D8\u5316\u8D8B\u52BF\u5982\u4F55\uFF1F',
+  pending_decision: '\u8FD9\u4E2A**\u5F85\u51B3\u5B9A\u7684\u4E8B**\u80FD\u804A\u804A\u5417\uFF1F\u6BD4\u5982\u6709\u54EA\u4E9B\u9009\u9879\u3001\u5F71\u54CD\u56E0\u7D20\u662F\u4EC0\u4E48\uFF1F',
+};
+
+/**
+ * Generate a clarification question from a knowledge gap.
+ * For object and theme entities, includes the LLM-inferred subtype in the question
+ * so users can see and correct it if needed.
+ */
+function gapToQuestion(gap: KnowledgeGap, subtype?: string): string {
   if (gap.type === 'new_entity') {
-    // For new entities, ask meaningful questions (skip subtype — LLM can infer)
-    const questions: Record<CardType, string> = {
-      person: gap.entityName + ' \u662F\u8C01\uFF1F\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5728\u54EA\u5BB6\u516C\u53F8\u3001\u4EC0\u4E48\u804C\u4F4D\u3001\u548C\u4F60\u7684\u5173\u7CFB\u7B49\u3002',
-      object: gap.entityName + ' \u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u65F6\u95F4\u8282\u70B9\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002',
-      theme: gap.entityName + ' \u80FD\u804A\u804A\u5417\uFF1F\u6BD4\u5982\u8FD9\u4E2A\u60C5\u51B5\u5F71\u54CD\u6709\u591A\u5927\u3001\u6301\u7EED\u591A\u4E45\u4E86\uFF1F',
-    };
-    return questions[gap.entityType] || gap.entityName + ' \u662F\u4EC0\u4E48\uFF1F';
+    // Object entities: use subtype-specific question template
+    if (gap.entityType === 'object' && subtype && OBJECT_SUBTYPE_QUESTIONS[subtype]) {
+      return `${gap.entityName} ${OBJECT_SUBTYPE_QUESTIONS[subtype]}`;
+    }
+    if (gap.entityType === 'object') {
+      return `${gap.entityName} \u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5F53\u524D\u72B6\u6001\u3001\u65F6\u95F4\u8282\u70B9\u3001\u76F8\u5173\u80CC\u666F\u7B49\u3002`;
+    }
+    // Theme entities: use subtype-specific question template
+    if (gap.entityType === 'theme' && subtype && THEME_SUBTYPE_QUESTIONS[subtype]) {
+      return `${gap.entityName} ${THEME_SUBTYPE_QUESTIONS[subtype]}`;
+    }
+    if (gap.entityType === 'theme') {
+      return `${gap.entityName} \u80FD\u804A\u804A\u5417\uFF1F\u6BD4\u5982\u8FD9\u4E2A\u60C5\u51B5\u5F71\u54CD\u6709\u591A\u5927\u3001\u6301\u7EED\u591A\u4E45\u4E86\uFF1F`;
+    }
+    // Person entities: keep existing question template
+    if (gap.entityType === 'person') {
+      return `${gap.entityName} \u662F\u8C01\uFF1F\u80FD\u4ECB\u7ECD\u4E00\u4E0B\u5417\uFF1F\u6BD4\u5982\u5728\u54EA\u5BB6\u516C\u53F8\u3001\u4EC0\u4E48\u804C\u4F4D\u3001\u548C\u4F60\u7684\u5173\u7CFB\u7B49\u3002`;
+    }
+    return `${gap.entityName} \u662F\u4EC0\u4E48\uFF1F`;
   }
   if (gap.type === 'missing_attribute' && gap.missingAttribute) {
     const questions: Record<string, string> = {
@@ -70,19 +105,20 @@ function gapToQuestion(gap: KnowledgeGap): string {
       relationship_to_user: '\u4F60\u548C ' + gap.entityName + ' \u662F\u4EC0\u4E48\u5173\u7CFB\uFF1F',
       // Person P1 attributes
       responsibility: gap.entityName + ' \u8D1F\u8D23\u4EC0\u4E48\u5DE5\u4F5C\uFF1F',
-      // Object P0/P1 attributes (subtype skipped - LLM infers from name)
+      // Object P0/P1 attributes
+      subtype: gap.entityName + ' \u662F\u4EC0\u4E48\u7C7B\u578B\uFF1F\u6BD4\u5982\u9879\u76EE\u3001\u4EFB\u52A1\u3001\u4EA7\u54C1\u7B49\uFF1F',
       status: gap.entityName + ' \u5F53\u524D\u7684\u72B6\u6001\u662F\u4EC0\u4E48\uFF1F',
       deadline: gap.entityName + ' \u6709\u622A\u6B62\u65E5\u671F\u6216\u65F6\u95F4\u8282\u70B9\u5417\uFF1F',
     };
-    return questions[gap.missingAttribute] || `关于 ${gap.entityName} 的 ${gap.missingAttribute} 信息是什么？`;
+    return questions[gap.missingAttribute] || `\u5173\u4E8E ${gap.entityName} \u7684 ${gap.missingAttribute} \u4FE1\u606F\u662F\u4EC0\u4E48\uFF1F`;
   }
   if (gap.type === 'missing_relation') {
-    return `${gap.entityName} 和什么其他实体有关联？`;
+    return `${gap.entityName} \u548C\u4EC0\u4E48\u5176\u4ED6\u5B9E\u4F53\u6709\u5173\u8054\uFF1F`;
   }
   if (gap.type === 'recurring_pattern') {
-    return `${gap.entityName} 已经多次出现，它代表什么？`;
+    return `${gap.entityName} \u5DF2\u7ECF\u591A\u6B21\u51FA\u73B0\uFF0C\u5B83\u4EE3\u8868\u4EC0\u4E48\uFF1F`;
   }
-  return `请提供更多关于 ${gap.entityName} 的信息。`;
+  return `\u8BF7\u63D0\u4F9B\u66F4\u591A\u5173\u4E8E ${gap.entityName} \u7684\u4FE1\u606F\u3002`;
 }
 
 /**
@@ -296,9 +332,8 @@ function analyzeEntities(
       gaps.push(...cardGaps);
     }
 
-    // Skip subtype gaps — LLM can infer subtype from entity name
-    const meaningfulGaps = gaps.filter(g => g.type !== 'missing_attribute' || g.missingAttribute !== 'subtype');
-    const questions = meaningfulGaps.slice(0, 2).map(gapToQuestion);
+    // Generate questions, passing subtype so gapToQuestion can use subtype-specific phrasing
+    const questions = gaps.slice(0, 2).map(g => gapToQuestion(g, entity.subtype));
 
     const analyzedEntity: AnalyzedEntity = {
       ...entity,
