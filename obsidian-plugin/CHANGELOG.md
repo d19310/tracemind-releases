@@ -5,6 +5,16 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.4.1] - 2026-05-06
+
+### Changed
+- **#待分析 block 点击重新分析** — 点击 `#待分析` 标签的日记 block 自动触发 AI 实体提取和澄清流程
+- **ID 丢失容错** — block ID 缺失时自动生成新 UUID，分析完成后写回 markdown
+- **澄清回复入库** — AI 澄清阶段用户的回复原文以 `user_feedback` 类型记录到实体互动档案
+
+### Fixed
+- **#待分析 重复分析死循环** — 修复已有会话的待分析 block 导致 selectBlock 递归崩溃
+
 ## [1.4.0] - 2026-05-05
 
 ### Added

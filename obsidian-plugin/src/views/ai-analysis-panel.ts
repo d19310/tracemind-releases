@@ -2512,7 +2512,7 @@ export class AIAnalysisPanelView extends ItemView {
 				await this.streamChatMessage(parsedAttrs.acknowledgment);
 
 				// Always save Context Card — even if no attributes were extracted
-				await this.updateEntityFromClarification(entity, parsedAttrs.attributes);
+				await this.updateEntityFromClarification(entity, parsedAttrs.attributes, content);
 
 				// Move to next entity naturally
 				this.currentEntityIndex++;
@@ -2536,13 +2536,13 @@ export class AIAnalysisPanelView extends ItemView {
 					// User has new info — batch parse all known entities in one LLM call
 					if (this.knownEntities.length === 1) {
 						const parsedAttrs = await this.parseClarificationResponse(content, this.knownEntities[0]);
-						await this.updateEntityFromClarification(this.knownEntities[0], parsedAttrs.attributes || {});
+						await this.updateEntityFromClarification(this.knownEntities[0], parsedAttrs.attributes || {}, content);
 					} else {
 						// Multiple entities: one batch LLM call
 						const batchAttrs = await this.parseMultiEntityResponse(content, this.knownEntities);
 						for (const known of this.knownEntities) {
 							const attrs = batchAttrs[known.name] || {};
-							await this.updateEntityFromClarification(known, attrs);
+							await this.updateEntityFromClarification(known, attrs, content);
 						}
 					}
 					await this.streamChatMessage('\u5DF2\u66F4\u65B0\u4E86 ' + this.knownEntities.length + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
@@ -2706,7 +2706,7 @@ export class AIAnalysisPanelView extends ItemView {
 		return normalized;
 	}
 
-	private async updateEntityFromClarification(entity: EntityPreview, attributes: Record<string, string>) {
+	private async updateEntityFromClarification(entity: EntityPreview, attributes: Record<string, string>, userResponse: string) {
 		// Flatten any nested attributes (LLM sometimes returns {person: {company: ...}})
 		const flatAttrs = this.flattenAttributes(attributes);
 		const normalizedAttrs = this.normalizeAttributes(flatAttrs, entity.type);
@@ -2748,6 +2748,18 @@ export class AIAnalysisPanelView extends ItemView {
 					content: diaryContent || entity.context || entity.name,
 				}],
 			});
+		}
+
+		// Record user's clarification reply as an interaction on the entity
+		if (userResponse) {
+			const target = entityManager.findEntity(entity.name);
+			if (target) {
+				await entityManager.addInteraction(target.id, {
+					timestamp: new Date().toISOString(),
+					type: 'user_feedback',
+					content: userResponse,
+				});
+			}
 		}
 	}
 

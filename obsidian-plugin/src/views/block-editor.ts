@@ -1649,7 +1649,7 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Select a block and enter append mode
 	 */
-	private selectBlock(blockId: string) {
+	private async selectBlock(blockId: string) {
 		// Clear any existing child input
 		this.childInputEl = null;
 
@@ -1671,7 +1671,12 @@ export class BlockEditorView extends ItemView {
 			const aiView = this.plugin.getAIAnalysisView();
 			if (aiView) {
 				aiView.setMode('analysis');
-				aiView.setActiveBlock(blockId, block.content);
+				if ((block as ParsedBlock).category === '待分析') {
+					// Re-trigger AI analysis for unanalyzed blocks
+					await this.startAIAnalysis(block as ParsedBlock);
+				} else {
+					aiView.setActiveBlock(blockId, block.content);
+				}
 			}
 		}
 	}
@@ -2324,6 +2329,30 @@ export class BlockEditorView extends ItemView {
 			lines.splice(blockLineIndex + 1, 0, block.content);
 		}
 
+		// Ensure block ID is persisted as <!-- blockId --> after content
+		const idLine = `<!-- ${block.id} -->`;
+		let contentEndIndex = -1;
+		for (let i = blockLineIndex + 1; i < lines.length; i++) {
+			if (lines[i].startsWith('### ') || (lines[i].startsWith('- ') && lines[i].match(/^- \d{2}:\d{2}\s/))) {
+				contentEndIndex = i;
+				break;
+			}
+		}
+		if (contentEndIndex === -1) contentEndIndex = lines.length;
+
+		// Check if ID line already exists in the content section
+		let hasIdLine = false;
+		for (let i = blockLineIndex + 1; i < contentEndIndex; i++) {
+			if (lines[i].trim().match(/^<!-- [a-f0-9-]+ -->$/)) {
+				lines[i] = idLine;
+				hasIdLine = true;
+				break;
+			}
+		}
+		if (!hasIdLine) {
+			lines.splice(contentEndIndex, 0, idLine);
+		}
+
 		// Write back
 		await this.app.vault.modify(file, lines.join('\n'));
 	}
@@ -2413,20 +2442,35 @@ export class BlockEditorView extends ItemView {
 	 * Start AI analysis for a block
 	 */
 	private async startAIAnalysis(block: ParsedBlock | ChildBlock) {
+		// Regenerate block ID if missing (prevents empty-key session corruption)
+		if (!block.id) {
+			const newId = uuid();
+			console.warn(`[TraceMind] block-editor: block "${block.content.substring(0, 30)}..." has no ID, generated ${newId}`);
+			block.id = newId;
+		}
+
 		const sessionManager = this.plugin.getSessionManager();
 		const aiView = this.plugin.getAIAnalysisView();
 
 		// For child blocks, use parent's session
 		const effectiveParentId = (block as any).parentId || null;
 
-		// For parent blocks, check if session already has history
-		if (!effectiveParentId) {
+		// For parent blocks, check if session already has history.
+		// Skip this check for 待分析 blocks — they should always re-analyze.
+		const isUnexamined = (block as ParsedBlock).category === '待分析';
+		if (!effectiveParentId && !isUnexamined) {
 			const existingSession = sessionManager.getSession(block.id, effectiveParentId);
 			const hasHistory = existingSession && existingSession.messages && existingSession.messages.length > 0;
 
 			if (hasHistory) {
 				// Load existing session in AI panel AND enter append mode
-				this.selectBlock(block.id); // Enter append mode
+				// Inline setup to avoid re-triggering startAIAnalysis via selectBlock
+				this.selectedBlockId = block.id;
+				this.isAppendMode = true;
+				this.appendModeBlockId = block.id;
+				this.selectedBlockContent = block.content;
+				this.updateInputAreaForAppendMode();
+				this.renderBlocks();
 				if (aiView) {
 					aiView.setMode('analysis');
 					aiView.setActiveBlock(block.id, block.content);
