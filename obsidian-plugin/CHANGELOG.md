@@ -5,6 +5,18 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.4.3] - 2026-05-06
+
+### Changed
+- **安装/首次启动边界修正** — `install.sh` 不再创建业务目录，仅安装插件文件。首次启动向导负责创建并校验完整目录结构
+- **版本同步** — manifest.json / package.json / package-lock.json 三处版本统一
+- **Windows 手动安装文档** — 补充 `docs/install-windows.md`
+- **废弃 AI 测试清理** — 删除 3 个测试已废弃同步路径的文件，修复 2 个 API 变更测试
+
+### Fixed
+- **首次启动静默创建目录** — `main.ts` 不再在向导前调用 `ensureVaultStructure()`
+- **目录校验逻辑可测试** — 抽成 `getMissingFirstStartItems()` 纯函数，新增 6 个单元测试
+
 ## [1.4.2] - 2026-05-06
 
 ### Added
