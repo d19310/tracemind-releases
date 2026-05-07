@@ -7,7 +7,7 @@
  * 2. vault/.lifewiki/templates/ - built-in defaults
  */
 
-import { Vault, TFile, TFolder } from 'obsidian';
+import { Vault, TFile } from 'obsidian';
 import { Entity, ParsedBlock } from '../entities/types';
 
 export interface TemplateContext {
@@ -86,7 +86,7 @@ function renderConditionals(template: string, context: TemplateContext): string 
 			itemContent = itemContent.replace(/\{\{this\.([^}]+)\}\}/g, (_m: string, itemPath: string) => {
 				return getNestedValue(item, itemPath.trim()) ?? '';
 			});
-			itemContent = itemContent.replace(/\{\{([^#\/][^}]*?)\}\}/g, (_m: string, itemPath: string) => {
+			itemContent = itemContent.replace(/\{\{([^#/][^}]*?)\}\}/g, (_m: string, itemPath: string) => {
 				const path = itemPath.trim();
 				if (path === 'this') return String(item);
 				return getNestedValue(item, path) ?? '';
@@ -110,7 +110,7 @@ function renderVariables(template: string, context: TemplateContext): string {
 	let result = template;
 
 	// Replace simple variables and nested properties
-	const varRegex = /\{\{([^#\/][^}]*?)\}\}/g;
+	const varRegex = /\{\{([^#/][^}]*?)\}\}/g;
 	result = result.replace(varRegex, (match, path) => {
 		const trimmedPath = path.trim();
 		const value = getNestedValue(context, trimmedPath);

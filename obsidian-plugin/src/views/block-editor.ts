@@ -11,7 +11,6 @@
 
 import { ItemView, WorkspaceLeaf, TFile, TFolder, setIcon } from 'obsidian';
 import type TraceMindPlugin from '../main';
-import { Block } from '../entities/types';
 import { loadTemplate } from '../utils/template-loader';
 
 export const VIEW_TYPE_BLOCK_EDITOR = 'tracemind-block-editor';
@@ -1814,8 +1813,8 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Confirm and delete block
 	 */
-	private async confirmAndDeleteBlock(blockId: string, parentId: string | null, isChild: boolean, deleteSession: boolean) {
-		let message = '';
+	private async confirmAndDeleteBlock(blockId: string, parentId: string | null, isChild: boolean, _deleteSession: boolean) { void _deleteSession;
+		let message: string;
 		let childCount = 0;
 
 		if (isChild) {
@@ -1929,7 +1928,7 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Delete a parent block (and all children) from file
 	 */
-	private async deleteParentBlockFromFile(blockId: string, deleteSession: boolean) {
+	private async deleteParentBlockFromFile(blockId: string, deleteSession: boolean) { void deleteSession;
 		// Find the diary file
 		const dailyPath = `Daily/${this.currentDate}.md`;
 		let file = this.app.vault.getAbstractFileByPath(dailyPath);
@@ -2582,7 +2581,7 @@ export class BlockEditorView extends ItemView {
 				block.category = newCategory;
 				await this.saveBlockToFile(block);
 			}
-		} catch (error) {
+		} catch {
 			// Silent fail for category update
 		}
 	}

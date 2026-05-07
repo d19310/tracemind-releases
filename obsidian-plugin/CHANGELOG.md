@@ -5,6 +5,21 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.0] - 2026-05-07
+
+### Added
+- **Entity Subtype Metadata** — 完整的 subtype schema 体系（Phase 1-5B），支持 subtype-specific maturity、knowledge gap、AI prompt、Markdown 展示
+- **Provider 全链路修复** — providerType 显式配置、validateConfig 统一校验、HTTP 错误安全摘要、LLM extractor 接入、enableThinking/reasoningEffort 透传
+- **Vault 写入可靠性** — upsertCard rename 安全顺序、Entity Index 不污染、Insight 保存 helper、parent folder 自动确保
+- **Theme Subtype 迁移脚本** — `scripts/migrate-theme-subtypes.sh`
+- **UX 增强** — Settings Provider 编辑、Send 按钮 loading、测试连接友好错误、日历可访问性/键盘操作/批量 diary check
+- **ESLint 工具链** — 0 errors / 0 warnings 基线
+- **Release 准备** — 版本一致性测试、release artifact 检查、ignore 规则、安装脚本版本 fallback
+
+### Changed
+- **安装/首次启动边界修正** — `install.sh` 不再创建业务目录
+- **版本同步** — manifest.json / package.json / package-lock.json 三处版本统一
+
 ## [1.4.3] - 2026-05-06
 
 ### Changed
@@ -16,6 +31,12 @@ and this project adheres to [Conventional Commits](https://www.conventionalcommi
 ### Fixed
 - **首次启动静默创建目录** — `main.ts` 不再在向导前调用 `ensureVaultStructure()`
 - **目录校验逻辑可测试** — 抽成 `getMissingFirstStartItems()` 纯函数，新增 6 个单元测试
+
+### Release
+- **版本一致性检查** — 新增 `tests/release-prep.test.ts` 覆盖 version/manifest 同步
+- **安装脚本版本 fallback** — `install.sh` 不再硬编码 v1.4.2，支持 env var + manifest.json + DEFAULT_VERSION
+- **ignore 规则** — `.gitignore` 补齐 `.DS_Store`、`TraceMindVault/`
+- **release artifact 检查** — 明确 `main.js` + `manifest.json` 为必需 artifact
 
 ## [1.4.2] - 2026-05-06
 

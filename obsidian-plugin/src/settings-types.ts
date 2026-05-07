@@ -1,0 +1,38 @@
+/**
+ * TraceMind Settings types - pure module with no Obsidian dependency.
+ * Settings UI imports from here; tests import from here.
+ */
+
+export type ProviderType = 'openai' | 'anthropic' | 'ollama' | 'custom';
+
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  providerType: ProviderType;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  enableThinking?: boolean;
+  reasoningEffort?: '' | 'high' | 'max';
+}
+
+export interface TraceMindSettings {
+  providers: ProviderConfig[];
+  defaultProviderId: string;
+  agentProviderMapping: {
+    analysis: string;
+    chat: string;
+  };
+  /** Enable local agent CLI integration */
+  localAgentEnabled: boolean;
+}
+
+export const DEFAULT_SETTINGS: TraceMindSettings = {
+  providers: [],
+  defaultProviderId: '',
+  agentProviderMapping: {
+    analysis: '',
+    chat: '',
+  },
+  localAgentEnabled: false,
+};

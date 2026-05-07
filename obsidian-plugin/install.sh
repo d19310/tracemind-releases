@@ -18,12 +18,15 @@ PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
 GITHUB_REPO="d19310/tracemind-releases"
 
-# Read version from local manifest.json, fall back to default
-if [[ -f "manifest.json" ]]; then
-  VERSION="v$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version)" 2>/dev/null || echo "1.4.2")"
+DEFAULT_VERSION="v1.5.0"
+
+# Resolve version: env var > local manifest.json > DEFAULT_VERSION
+if [[ -n "${TRACEMIND_VERSION:-}" ]]; then
+  VERSION="$TRACEMIND_VERSION"
+elif [[ -f "manifest.json" ]]; then
+  VERSION="v$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version)" 2>/dev/null || echo "$DEFAULT_VERSION" | sed 's/^v//')"
 else
-  # Try to fetch the latest release tag
-  VERSION="v1.4.2"
+  VERSION="$DEFAULT_VERSION"
 fi
 
 VAULT_PATH=""

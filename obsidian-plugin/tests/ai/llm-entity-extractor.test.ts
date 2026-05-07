@@ -1,6 +1,22 @@
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExtractionPrompt, parseLLMResponse } from '../../src/ai/llm-entity-extractor';
+import { buildExtractionPrompt, parseLLMResponse, extractEntitiesWithLLM } from '../../src/ai/llm-entity-extractor';
+
+const originalFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = originalFetch; });
+
+function mockEntityResponse() {
+  return JSON.stringify({
+    choices: [{ message: { role: 'assistant', content: JSON.stringify({ domain: '工作', entities: [{ name: '张三', type: 'person', confidence: 0.9 }] }) } }],
+  });
+}
+
+function mockAnthropicResponse() {
+  return JSON.stringify({
+    content: [{ type: 'text', text: JSON.stringify({ domain: '工作', entities: [{ name: '张三', type: 'person', confidence: 0.9 }] }) }],
+    role: 'assistant',
+  });
+}
 
 describe('LLM Entity Extractor - Prompt Builder', () => {
   it('includes system instructions and diary text in prompt', () => {
@@ -102,5 +118,159 @@ describe('LLM Entity Extractor - Response Parser', () => {
     const result = parseLLMResponse(json);
 
     assert.deepEqual(result.entities, []);
+  });
+});
+
+describe('extractEntitiesWithLLM - OpenAI', () => {
+  it('uses OpenAI URL and Bearer auth', async () => {
+    let capturedUrl = '';
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = ((url: string, init: any) => {
+      capturedUrl = url;
+      capturedHeaders = init.headers || {};
+      return Promise.resolve(new Response(mockEntityResponse(), { status: 200 }));
+    }) as any;
+
+    await extractEntitiesWithLLM('今天和张三讨论项目', {
+      provider: 'openai', apiKey: 'sk-test', model: 'gpt-4', baseUrl: 'https://api.openai.com',
+    });
+
+    assert.ok(capturedUrl.includes('/chat/completions'), `URL should include /chat/completions: ${capturedUrl}`);
+    assert.equal(capturedHeaders['Authorization'], 'Bearer sk-test');
+  });
+
+  it('parses OpenAI response correctly', async () => {
+    globalThis.fetch = (() => Promise.resolve(new Response(mockEntityResponse(), { status: 200 }))) as any;
+    const result = await extractEntitiesWithLLM('test', {
+      provider: 'openai', apiKey: 'sk-test', model: 'gpt-4', baseUrl: 'https://api.openai.com',
+    });
+    assert.equal(result.entities.length, 1);
+    assert.equal(result.entities[0].name, '张三');
+  });
+
+  it('includes reasoning_effort in extraction body when configured', async () => {
+    let capturedBody: any;
+    globalThis.fetch = ((_url: string, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return Promise.resolve(new Response(mockEntityResponse(), { status: 200 }));
+    }) as any;
+
+    await extractEntitiesWithLLM('test', {
+      provider: 'openai', apiKey: 'sk-test', model: 'gpt-4', baseUrl: 'https://api.openai.com',
+      reasoningEffort: 'high',
+    });
+    assert.equal(capturedBody!.reasoning_effort, 'high', `Expected reasoning_effort in: ${JSON.stringify(capturedBody)}`);
+  });
+
+  it('does not include reasoning_effort by default', async () => {
+    let capturedBody: any;
+    globalThis.fetch = ((_url: string, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return Promise.resolve(new Response(mockEntityResponse(), { status: 200 }));
+    }) as any;
+
+    await extractEntitiesWithLLM('test', {
+      provider: 'openai', apiKey: 'sk-test', model: 'gpt-4', baseUrl: 'https://api.openai.com',
+    });
+    assert.equal(capturedBody!.reasoning_effort, undefined, 'Should not include reasoning_effort by default');
+  });
+});
+
+describe('extractEntitiesWithLLM - Anthropic', () => {
+  it('uses Anthropic /v1/messages URL and x-api-key', async () => {
+    let capturedUrl = '';
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = ((url: string, init: any) => {
+      capturedUrl = url;
+      capturedHeaders = init.headers || {};
+      return Promise.resolve(new Response(mockAnthropicResponse(), { status: 200 }));
+    }) as any;
+
+    await extractEntitiesWithLLM('今天和张三讨论项目', {
+      provider: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6', baseUrl: 'https://api.anthropic.com/v1/messages',
+    });
+
+    assert.ok(capturedUrl.includes('/v1/messages'), `URL should include /v1/messages: ${capturedUrl}`);
+    assert.equal(capturedHeaders['x-api-key'], 'sk-ant-test');
+    assert.equal(capturedHeaders['anthropic-version'], '2023-06-01');
+  });
+
+  it('parses Anthropic response correctly', async () => {
+    globalThis.fetch = (() => Promise.resolve(new Response(mockAnthropicResponse(), { status: 200 }))) as any;
+    const result = await extractEntitiesWithLLM('test', {
+      provider: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6', baseUrl: 'https://api.anthropic.com/v1/messages',
+    });
+    assert.equal(result.entities.length, 1);
+    assert.equal(result.entities[0].name, '张三');
+  });
+
+  it('includes thinking in Anthropic extraction body when enableThinking is true', async () => {
+    let capturedBody: any;
+    globalThis.fetch = ((_url: string, init: any) => {
+      capturedBody = JSON.parse(init.body);
+      return Promise.resolve(new Response(mockAnthropicResponse(), { status: 200 }));
+    }) as any;
+
+    await extractEntitiesWithLLM('test', {
+      provider: 'anthropic', apiKey: 'sk-ant-test', model: 'claude-sonnet-4-6', baseUrl: 'https://api.anthropic.com/v1/messages',
+      enableThinking: true,
+    });
+    assert.deepEqual(capturedBody!.thinking, { type: 'adaptive', effort: 'high' },
+      `Expected thinking in: ${JSON.stringify(capturedBody)}`);
+  });
+});
+
+describe('extractEntitiesWithLLM - Ollama', () => {
+  it('works without API key', async () => {
+    globalThis.fetch = (() => {
+      return Promise.resolve(new Response(mockEntityResponse(), { status: 200 }));
+    }) as any;
+
+    const result = await extractEntitiesWithLLM('test', {
+      provider: 'ollama', apiKey: '', model: 'llama3', baseUrl: 'http://localhost:11434',
+    });
+    assert.equal(result.entities.length, 1);
+  });
+
+  it('uses localhost URL', async () => {
+    let capturedUrl = '';
+    globalThis.fetch = ((url: string) => {
+      capturedUrl = url;
+      return Promise.resolve(new Response(mockEntityResponse(), { status: 200 }));
+    }) as any;
+
+    await extractEntitiesWithLLM('test', {
+      provider: 'ollama', apiKey: '', model: 'llama3', baseUrl: 'http://localhost:11434',
+    });
+    assert.ok(capturedUrl.includes('localhost:11434'), `URL should include localhost: ${capturedUrl}`);
+  });
+});
+
+describe('extractEntitiesWithLLM - error handling', () => {
+  it('throws safe error on HTTP failure', async () => {
+    const errorBody = JSON.stringify({ error: { message: 'Invalid API key: sk-abc123def456ghi789jkl012mno345pqr678stu' } });
+    globalThis.fetch = (() => Promise.resolve(new Response(errorBody, { status: 401 }))) as any;
+
+    try {
+      await extractEntitiesWithLLM('test', {
+        provider: 'openai', apiKey: 'sk-test', model: 'gpt-4', baseUrl: 'https://api.openai.com',
+      });
+      assert.fail('Should have thrown');
+    } catch (e) {
+      const msg = (e as Error).message;
+      assert.ok(msg.includes('HTTP 401'), `Expected HTTP 401 in: ${msg}`);
+      assert.ok(!msg.includes('sk-abc123'), `Secret should be masked: ${msg}`);
+    }
+  });
+
+  it('throws on invalid config', async () => {
+    try {
+      await extractEntitiesWithLLM('test', {
+        provider: 'openai', apiKey: '', model: '', baseUrl: '',
+      });
+      assert.fail('Should have thrown');
+    } catch (e) {
+      assert.ok((e as Error).message.includes('API Key') || (e as Error).message.includes('模型'));
+    }
   });
 });

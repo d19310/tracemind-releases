@@ -6,11 +6,12 @@
 
 import { App, Notice, Plugin } from 'obsidian';
 import { TraceMindSettingTab } from './settings';
-import { TraceMindSettings, DEFAULT_SETTINGS, ProviderConfig } from './settings-types';
+import { TraceMindSettings, DEFAULT_SETTINGS, ProviderConfig, type ProviderType } from './settings-types';
 import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './views/block-editor';
 import { AIAnalysisPanelView, VIEW_TYPE_AI_ANALYSIS } from './views/ai-analysis-panel';
 import { CalendarView, VIEW_TYPE_CALENDAR } from './views/calendar-view';
-import { ensureFolder } from './vault/vault';
+import { ensureFolder, ensureParentFolder } from './vault/vault';
+import { resolveEntityPath } from './storage/entity-writer';
 import { UserProfile, DEFAULT_PROFILE } from './core/user-profile';
 import { loadProfile } from './core/profile-loader';
 import { ContextCard, calculateMaturity, CardType } from './core/context-card';
@@ -25,8 +26,9 @@ import type { BlockSession, ChatSession } from './entities/types';
 import { AnalysisPhase } from './entities/types';
 import { isFirstStart, showFirstStartWizard } from './core/first-start';
 import { loadEntityTypeConfig } from './ai/entity-type-config';
-import { insightFilePath, parseInsightMarkdown, formatInsightMarkdown } from './storage/insight-store';
+import { insightFilePath, parseInsightMarkdown } from './storage/insight-store';
 import type { InsightReport } from './storage/insight-store';
+import { saveInsightReport } from './storage/insight-writer';
 import { buildDailyInsightPrompt, computeContentHash, buildEntityIndexSummary } from './ai/daily-insight';
 import type { InsightStreamCallbacks } from './ai/daily-insight';
 import { streamChat } from './ai/provider-config';
@@ -166,6 +168,19 @@ export class TraceMindPlugin extends Plugin {
   async loadSettings() {
     const data = await this.loadData();
     this.settings = { ...DEFAULT_SETTINGS, ...data } as TraceMindSettings;
+
+    // Migrate old providers missing providerType
+    for (const p of this.settings.providers) {
+      if (!(p as any).providerType) {
+        if (p.baseUrl?.includes('anthropic.com')) {
+          (p as any).providerType = 'anthropic';
+        } else if (p.baseUrl?.includes('localhost:11434') || p.baseUrl?.includes('127.0.0.1:11434')) {
+          (p as any).providerType = 'ollama';
+        } else {
+          (p as any).providerType = 'openai';
+        }
+      }
+    }
   }
 
   async saveSettings() {
@@ -498,16 +513,19 @@ export class TraceMindPlugin extends Plugin {
 
     // Get analysis provider
     const provider = this.getAIProvider().getProviderForContext('analysis') as ProviderConfig;
-    if (!provider || !provider.apiKey) {
+    if (!provider) {
       throw new Error('请先在设置中配置 AI Provider');
     }
+    // Field-level validation is handled by validateConfig() in streamChat()
 
     // Build provider config for streamChat
     const aiConfig = {
-      provider: 'openai' as const,
+      provider: (provider.providerType || 'openai') as ProviderType,
       apiKey: provider.apiKey,
       model: provider.model,
       baseUrl: provider.baseUrl,
+      enableThinking: provider.enableThinking,
+      reasoningEffort: provider.reasoningEffort,
     };
 
     // Accumulate full text from deltas
@@ -542,15 +560,8 @@ export class TraceMindPlugin extends Plugin {
       blockCount: blocks.length,
     };
 
-    // Save to vault
-    const path = insightFilePath(dateStr);
-    const markdown = formatInsightMarkdown(report);
-    const existingFile = this.app.vault.getFileByPath(path);
-    if (existingFile) {
-      await this.app.vault.modify(existingFile, markdown);
-    } else {
-      await this.app.vault.create(path, markdown);
-    }
+    // Save to vault — delegates to saveInsightReport for parent-dir + overwrite logic
+    await saveInsightReport(this.app, report);
 
     callbacks.onDone(fullText);
     return report;
@@ -680,15 +691,22 @@ class EntityManagerAdapter {
       card.attributes.interactions = entity.interactions;
     }
 
-    const md = cardToMarkdown(card);
-    const folder = getCardFolder(cardType);
-    const path = `${folder}${entity.title}.md`;
+    const { path } = resolveEntityPath({ title: entity.title, type: entity.type });
+
+    // Ensure parent folder exists
+    await ensureParentFolder(this.app, path);
 
     const existing = this.app.vault.getFileByPath(path);
-    if (!existing) {
-      await this.app.vault.create(path, md);
+    if (existing) {
+      // Already exists — update index from existing file, not new markdown
+      const existingContent = await this.app.vault.read(existing);
+      const existingEntry = cardToIndexEntry(existingContent, path);
+      this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, existingEntry);
+      return { ...entity, id: existingEntry.id };
     }
-    // If already exists, skip silently — caller should use update_entity
+
+    const md = cardToMarkdown(card);
+    await this.app.vault.create(path, md);
 
     // Update in-memory index
     const entry = cardToIndexEntry(md, path);
@@ -1135,10 +1153,12 @@ class AIProviderAdapter {
     const result = await sendChat(
       messages.map(m => ({ role: m.role, content: m.content })),
       {
-        provider: 'openai',
+        provider: provider.providerType || 'openai',
         apiKey: provider.apiKey,
         model: provider.model,
         baseUrl: provider.baseUrl,
+        enableThinking: provider.enableThinking,
+        reasoningEffort: provider.reasoningEffort,
       }
     );
     return { content: result.content, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
@@ -1163,10 +1183,12 @@ class AIProviderAdapter {
     await sseChat(
       messages.map(m => ({ role: m.role, content: m.content })),
       {
-        provider: 'openai' as const,
+        provider: (provider.providerType || 'openai') as ProviderType,
         apiKey: provider.apiKey,
         model: provider.model,
         baseUrl: provider.baseUrl,
+        enableThinking: provider.enableThinking,
+        reasoningEffort: provider.reasoningEffort,
       },
       callbacks,
     );
@@ -1201,6 +1223,9 @@ class AIProviderAdapter {
       apiKey: provider.apiKey || '',
       model: provider.model || 'gpt-4',
       baseUrl: provider.baseUrl || '',
+      provider: provider.providerType,
+      enableThinking: provider.enableThinking,
+      reasoningEffort: provider.reasoningEffort,
       profileContext: profileContext || undefined,
     }, this.plugin.entityIndex.entries);
     console.log('[TraceMind] analyzeBlock result entities:', tmResult.entities.length, tmResult);
