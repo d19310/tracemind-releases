@@ -61,6 +61,10 @@ export class AIAnalysisPanelView extends ItemView {
 		return this.mode === 'chat' ? 'AI聊天' : 'AI洞察';
 	}
 
+	getIcon(): string {
+		return 'brain';
+	}
+
 	async onOpen() {
 		this.plugin.aiAnalysisView = this;
 
@@ -2531,7 +2535,7 @@ export class AIAnalysisPanelView extends ItemView {
 							await this.updateEntityFromClarification(known, attrs, content);
 						}
 					}
-					await this.streamChatMessage('\u5DF2\u66F4\u65B0\u4E86 ' + this.knownEntities.length + ' \u4E2A\u5B9E\u4F53\u7684\u4FE1\u606F\u3002');
+					await this.streamChatMessage('\u5DF2\u66F4\u65B0 ' + this.knownEntities.length + ' \u4E2A\u76F8\u5173\u6863\u6848\u4FE1\u606F\u3002');
 					this.knownEntities = [];
 					await this.finishClarification();
 				}

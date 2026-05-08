@@ -185,6 +185,10 @@ export class BlockEditorView extends ItemView {
 		return 'TraceMind 迹忆';
 	}
 
+	getIcon(): string {
+		return 'brain';
+	}
+
 	/**
 	 * Set the current date and navigate to that date's diary
 	 */

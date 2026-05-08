@@ -5,6 +5,12 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.1] - 2026-05-08
+
+### Changed
+- **Icon 统一** — 日记视图和 AI 面板 tab 改为脑 icon，与左侧导航栏品牌标识一致
+- **文案优化** — "已更新了x个实体的信息" → "已更新 x 个相关档案信息"
+
 ## [1.5.0] - 2026-05-07
 
 ### Added
