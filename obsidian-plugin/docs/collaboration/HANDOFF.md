@@ -2,275 +2,190 @@
 
 ## 当前任务
 
-Vault Structure Startup Check 1：每次启动插件时校验 Vault 业务目录，缺失或结构异常时提示用户确认修正。
+Web Clipping Context 1：AI 分析日记 block 时，读取已剪藏网页，生成受控摘要，并作为附加上下文传入实体提取。
+
+## Execution Mode
+
+worker
 
 ## Goal
 
-用户要求：
+当前附件上传和网页剪藏保存已经完成：日记中的 URL 可经确认剪藏到 `Daily/webclippings/`，并替换成 `![[Daily/webclippings/<file>.md]]`。
 
-> 每次启动插件的时候检查 vault 文件目录是否符合要求，是否有变更和缺失，如果有提示用户并让用户确认修正，如果符合要求就静默启动，不用提示用户。
+本轮补齐用户之前明确要求的下一步：AI 分析日记时，如果当前 block 内容里包含剪藏文件 embed，则读取对应剪藏 Markdown，先生成长度受控的摘要，再把摘要作为附加上下文传给实体提取 LLM。不要把完整剪藏正文直接塞进 prompt。
 
-当前非首次启动路径在 `src/main.ts` 中会直接调用 `ensureVaultStructure()`，这会静默创建缺失目录。新行为必须改成：
+成功后，用户在日记中写：
 
-- 每次插件启动都校验 TraceMind 所需 Vault 结构。
-- 如果结构完整：静默继续启动，不弹窗，不 Notice。
-- 如果结构缺失或关键路径类型错误：弹窗提示用户，列出问题，让用户确认是否修正。
-- 只有用户确认修正后，才创建缺失目录/档案或修复可安全修复的问题。
-- 用户取消时，不静默修复；插件可以继续加载，但要明确提示“结构未修正，部分功能可能不可用”。
+```md
+今天看了这篇文章：![[Daily/webclippings/2026-05-09-H200供货紧张-a1b2c3d4.md]]
+```
 
-## Current Code Facts
-
-请先阅读这些文件，不要重写目录规则：
-
-- `src/core/first-start-constants.ts`
-  - `REQUIRED_DIRS`
-  - `PROFILE_PATH`
-  - `getMissingFirstStartItems(vault)`
-  - `isFirstStart(vault)`
-- `src/core/first-start.ts`
-  - `showFirstStartWizard(app, onComplete)`
-  - 首次启动向导已经能创建目录和 `TraceMind/PROFILE.md`。
-- `src/main.ts`
-  - `TRACEMIND_DIRS` 当前是本地重复目录清单。
-  - `onload()` 当前在非首次启动分支中静默调用 `ensureVaultStructure()`，这正是本轮要改的行为。
-  - `ensureVaultStructure()` 只创建目录，不创建 `PROFILE.md`。
-- `src/core/profile-loader.ts`
-  - 已有 `PROFILE.md` 读写逻辑。
-- `tests/core/first-start.test.ts`
-  - 已覆盖首次启动常量和缺失项校验。
-
-## Product / UX Design
-
-### 启动分支
-
-建议启动逻辑调整为：
-
-1. 插件加载 settings/profile/config/views/commands 等轻量初始化。
-2. 判断 `isFirstStart(this.app.vault.adapter)`：
-   - 如果 `true`：继续使用现有首次启动向导。
-   - 向导完成后执行 `ensureVaultStructure()` + `rebuildEntityIndex()`。
-3. 如果不是首次启动：
-   - 先校验 Vault 结构。
-   - 没问题：直接 `initializeEntityIndex()`，无弹窗。
-   - 有问题：打开“Vault 结构需要修正”弹窗。
-     - 用户点“修正”：执行修正，再重新校验；成功后 `initializeEntityIndex()`。
-     - 用户点“暂不修正”：不创建目录；显示一个简短 Notice，随后仍可继续加载，但不要启动会依赖缺失结构的写入型操作。
-
-### 校验范围
-
-必须检查：
-
-- 目录：
-  - `Daily`
-  - `Person`
-  - `Object`
-  - `Theme`
-  - `TraceMind`
-  - `TraceMind/sessions`
-  - `TraceMind/index`
-  - `TraceMind/insights`
-- 文件：
-  - `TraceMind/PROFILE.md`
-
-不仅检查“存在”，也要尽量检查类型：
-
-- 必需目录路径如果存在但不是目录，应报告为结构异常。
-- `TraceMind/PROFILE.md` 如果存在但不是文件，应报告为结构异常。
-
-不要把额外目录/文件当成异常。用户 Vault 中允许有其他内容。
-
-### 修正规则
-
-可自动修正：
-
-- 缺失目录：创建目录。
-- 缺失 `TraceMind/PROFILE.md`：使用现有 profile template 或 helper 创建默认 profile。
-
-不可自动覆盖：
-
-- 必需目录路径已存在但其实是文件。
-- `TraceMind/PROFILE.md` 路径已存在但其实是目录。
-
-遇到不可自动修正项时：
-
-- 弹窗中说明“需要用户手动处理”。
-- 点击“修正”只能修复可修复项；不可修复项仍应保留在重新校验结果中。
-- 不要删除、覆盖或重命名用户现有文件。
+AI 分析应能利用剪藏摘要理解网页内容，但日记原文、session 展示和 Vault 文件不应被摘要污染。
 
 ## Scope
 
 允许修改：
 
-- `src/core/first-start-constants.ts`
-- `src/core/first-start.ts`
-- 可新增 `src/core/vault-structure.ts` 或 `src/core/vault-structure-modal.ts`
+- `src/views/block-editor.ts`
 - `src/main.ts`
-- `tests/core/first-start.test.ts`
-- 可新增 `tests/core/vault-structure.test.ts`
+- `src/ai/analysis-service.ts`
+- `src/ai/llm-entity-extractor.ts`
+- `src/storage/web-clippings.ts`
+- 可新增 `src/storage/web-clipping-context.ts`
+- 可新增/修改相关测试：
+  - `tests/storage/web-clippings.test.ts`
+  - `tests/storage/web-clipping-context.test.ts`
+  - `tests/ai/llm-entity-extractor.test.ts`
+  - 必要时新增一个轻量 adapter/helper 测试
 - `docs/collaboration/REPORT.md`
 
 只读参考：
 
-- `src/core/profile-loader.ts`
-- `src/vault/vault.ts`
-- `src/storage/entity-index-store.ts`
-- `docs/collaboration/ARCHITECTURE.md`
+- `src/storage/diary-attachments.ts`
+- `src/utils/web-clipper.ts`
+- `src/utils/opencli-web-clipper.ts`
+- `src/views/ai-analysis-panel.ts`
+- `src/storage/session-store.ts`
 
 ## Non-goals
 
-- 不改安装脚本。
+- 不改附件上传功能。
+- 不改网页剪藏抓取流程，不重新设计 OpenCLI。
+- 不在 AI prompt 里传完整网页正文。
+- 不把 `Daily/webclippings/` 加入必需 Vault 结构检查。
+- 不改 Daily/Context Card/Insight 的存储格式。
+- 不新增 Settings 配置项。
+- 不做网页剪藏文件的后台重摘要、缓存或迁移。
 - 不改 release/version。
-- 不改 Entity Index 持久化格式。
-- 不改 provider、AI Panel、Settings、Calendar。
-- 不做真实 Vault 迁移。
-- 不删除、覆盖、重命名任何用户已有 Vault 文件。
-- 不把额外目录当成异常。
-- 不在首次启动向导前创建业务目录。
 
 ## Implementation Notes
 
-### 1. 目录规则只保留一个来源
+### 1. 新增可测试的剪藏上下文 helper
 
-优先复用 `REQUIRED_DIRS` 和 `PROFILE_PATH`。
+建议新增 `src/storage/web-clipping-context.ts`，把纯逻辑和 Obsidian vault 读取分开。
 
-如果 `src/main.ts` 的 `TRACEMIND_DIRS` 继续存在，必须保证它直接来自 `REQUIRED_DIRS`，不要维护第二份硬编码目录清单。
-
-推荐：
+建议纯函数：
 
 ```ts
-import { REQUIRED_DIRS, PROFILE_PATH } from './core/first-start';
-```
-
-然后 `ensureVaultStructure()` 遍历 `REQUIRED_DIRS`。
-
-### 2. 新增可测试的结构校验 helper
-
-建议新增纯 helper，便于测试：
-
-```ts
-export type VaultStructureIssueType = 'missing_dir' | 'missing_file' | 'wrong_type';
-
-export interface VaultStructureIssue {
-  type: VaultStructureIssueType;
+export interface WebClippingContextItem {
   path: string;
-  expected: 'folder' | 'file';
-  actual?: 'folder' | 'file' | 'unknown';
-  label: string;
-  repairable: boolean;
-}
-```
-
-校验函数可以是同步抽象：
-
-```ts
-export interface VaultStructureAccess {
-  getType(path: string): 'folder' | 'file' | null;
+  title?: string;
+  url?: string;
+  summary: string;
 }
 
-export function getVaultStructureIssues(vault: VaultStructureAccess): VaultStructureIssue[] { ... }
+export function extractWebClippingEmbedPaths(content: string): string[] { ... }
+
+export function summarizeWebClippingMarkdown(markdown: string, maxChars?: number): {
+  title?: string;
+  url?: string;
+  summary: string;
+} { ... }
+
+export function buildWebClippingContext(items: WebClippingContextItem[], maxTotalChars?: number): string { ... }
 ```
 
-在 Obsidian 实现里，`getType()` 可通过 `app.vault.getAbstractFileByPath(path)` 判断 `TFolder` / `TFile`。如果不想 import `TFolder/TFile`，也可以检查对象的 `children` / `extension`，但更建议使用 Obsidian 类型。
+要求：
 
-### 3. 启动修正弹窗
+- 只识别 `![[Daily/webclippings/<name>.md]]`。
+- 兼容 Obsidian alias：`![[Daily/webclippings/x.md|标题]]`。
+- 去重同一个 path。
+- 忽略普通 URL、普通 wikilink、附件 embed。
+- `summarizeWebClippingMarkdown()` 先去掉 YAML frontmatter，再去掉标题重复、`> Source:` 行，压缩空白。
+- 摘要是 deterministic 的受控摘要即可，本轮不要新增第二次 LLM 调用。可以保留前 `maxChars` 字符并在截断时加 `...`。
+- 默认单篇摘要建议 800 字符以内，总上下文建议 2000 字符以内。
+- 输出格式清晰，例如：
 
-建议新增：
+```text
+网页剪藏摘要：
+1. 标题：...
+   来源：...
+   摘要：...
+```
+
+### 2. 接入 AI 分析入口
+
+当前 `BlockEditorView.startAIAnalysis()` 调用：
 
 ```ts
-export function showVaultStructureRepairModal(
-  app: App,
-  issues: VaultStructureIssue[],
-  onRepair: () => Promise<VaultStructureIssue[]>,
-  onSkip: () => Promise<void> | void,
-  onComplete: () => Promise<void>,
-): void
+result = await aiProvider.analyzeBlock(block.content, block.id);
 ```
 
-弹窗内容：
+本轮需要在分析前：
 
-- 标题：`TraceMind Vault 结构需要修正`
-- 说明：检测到必要目录或档案缺失/异常。
-- 列表：逐条展示 issue label。
-- 按钮：
-  - `修正`：执行可修复项，重新校验。
-  - `暂不修正`：关闭，不修复。
+1. 从 `block.content` 提取剪藏 embed path。
+2. 用 Obsidian Vault 读取剪藏 Markdown。
+3. 对每个剪藏生成摘要。
+4. 构建附加上下文。
+5. 传给 `aiProvider.analyzeBlock()` 或下游 `AnalysisService.analyzeBlockAsync()`。
 
-如果修正后无 issue：
+建议不要把 `block.content` 改成带摘要的内容，因为：
 
-- Notice：`TraceMind Vault 结构已修正`
-- 关闭弹窗
-- 调用 `onComplete()`，继续 `initializeEntityIndex()`
+- UI/session 展示应保持用户真实日记内容。
+- `buildAnalysisResultImpl()` 里实体 context snippet 最好仍基于真实日记。
+- Daily 文件不能被摘要污染。
 
-如果仍有不可修复 issue：
-
-- 在弹窗内更新状态，列出仍需手动处理项。
-- 不要调用 `onComplete()`。
-
-### 4. main.ts 启动顺序
-
-非首次启动分支从：
+可以选择新增参数：
 
 ```ts
-await this.ensureVaultStructure();
-await this.initializeEntityIndex();
+aiProvider.analyzeBlock(content, blockId, { webClippingContext })
 ```
 
-改为类似：
+并一路传到 `AnalysisService.analyzeBlockAsync()` / `extractEntitiesWithLLM()`。
+
+### 3. Prompt 注入方式
+
+当前 `buildExtractionPrompt(diaryText, profileContext)` 会把 `profileContext` 拼进 prompt。不要把网页摘要伪装成用户档案。
+
+建议扩展为：
 
 ```ts
-await this.checkVaultStructureThenContinue();
+buildExtractionPrompt(diaryText, profileContext?, extraContext?)
 ```
 
-其中：
+在“日记文本”之前加入独立章节：
 
-- 完整：直接 `initializeEntityIndex()`。
-- 有缺失：弹窗确认后再修正和初始化。
-- 用户跳过：不要静默修正；可以不初始化依赖完整结构的持久化索引，或只尝试 `loadEntityIndex()` 并捕获错误。请在 REPORT 说明选择。
+```text
+## 附加网页剪藏摘要
 
-重要：首次启动向导仍然是 `PROFILE.md` 不存在时的默认入口，不能被新弹窗绕过。
+以下内容来自用户在日记中引用的网页剪藏，已做摘要。可作为理解日记背景的辅助信息，但实体提取仍以日记文本和用户真实表达为主。
 
-## Tests Required
-
-### Pure helper tests
-
-新增或扩展 core 测试：
-
-- 完整结构返回 `[]`。
-- 缺失目录返回 `missing_dir` 且 `repairable: true`。
-- 缺失 `PROFILE.md` 返回 `missing_file` 且 `repairable: true`。
-- 目录路径存在但类型为 file 返回 `wrong_type` 且 `repairable: false`。
-- `PROFILE.md` 存在但类型为 folder 返回 `wrong_type` 且 `repairable: false`。
-- 额外文件/目录不会报错。
-
-### Startup behavior tests
-
-如果 `TraceMindPlugin` 难以直接实例化，不要大范围重构。可以抽一个小的决策 helper，例如：
-
-```ts
-export type StartupStructureDecision =
-  | { kind: 'first_start' }
-  | { kind: 'continue' }
-  | { kind: 'prompt_repair'; issues: VaultStructureIssue[] };
+...
 ```
 
-测试：
+注意：
 
-- first start 时仍走 `first_start`。
-- 非首次 + 完整结构 → `continue`。
-- 非首次 + 缺失目录 → `prompt_repair`。
+- 不要改变 JSON 输出格式要求。
+- 不要要求 LLM 提取网页中所有实体；只把网页摘要作为上下文。
+- 附加上下文为空时 prompt 应与旧行为基本一致。
 
-不要只测常量。
+### 4. 缺失/读取失败处理
+
+- 如果 embed 指向的剪藏文件不存在或读取失败：跳过该项，不阻断日记保存或 AI 分析。
+- 可以 `console.warn`，不要弹大量 Notice。
+- 如果所有剪藏都读不到：按原 block content 正常分析。
+
+### 5. REPORT/PLAN 状态
+
+完成后请在 `REPORT.md` 写清：
+
+- 读取哪些 embed。
+- 摘要长度控制策略。
+- 传入 AI 的位置。
+- 缺失文件处理。
+- 新增测试与验证结果。
+
+不要修改 `PLAN.md`，Codex 验收后再更新。
 
 ## Acceptance Criteria
 
-- 非首次启动且结构完整：不弹窗，不 Notice，正常初始化 index。
-- 非首次启动且缺失目录/PROFILE：弹窗提示用户确认修正，不静默创建。
-- 用户确认修正后：创建缺失目录/PROFILE，重新校验，成功后继续初始化 index。
-- 用户取消/跳过：不创建目录/PROFILE，并有清晰 Notice。
-- 首次启动 `PROFILE.md` 缺失时：仍使用首次启动向导，不被修复弹窗替代。
-- 必需路径类型错误时：报告为不可自动修复，不覆盖用户文件。
-- `TRACEMIND_DIRS` 不再与 `REQUIRED_DIRS` 分叉。
-- 有定向测试覆盖校验 helper 和启动决策。
+- 普通父 block 中包含 `![[Daily/webclippings/x.md]]` 时，AI 分析会读取该剪藏并把受控摘要作为附加上下文传入 LLM。
+- append mode 子 block 中包含剪藏 embed 时，同样支持。
+- 缺失剪藏文件不会阻断 AI 分析。
+- 摘要有单篇和总长度上限，不会把完整网页正文传给 LLM。
+- 日记正文、block.content、session 展示内容保持原始 embed，不被替换成摘要。
+- Prompt 中附加网页摘要是独立章节，不污染用户档案 profile context。
+- 没有剪藏 embed 时，旧 prompt/分析行为保持兼容。
 
 ## Verification
 
@@ -279,21 +194,23 @@ export type StartupStructureDecision =
 ```bash
 rtk proxy npx tsc --noEmit
 rtk npm run lint
-rtk proxy npx tsx --test tests/core/first-start.test.ts tests/core/vault-structure.test.ts
+rtk proxy npx tsx --test tests/storage/web-clipping-context.test.ts tests/ai/llm-entity-extractor.test.ts
 rtk npm test
 rtk npm run build
 rtk git diff --check
 ```
 
-如果测试文件名不同，请在 REPORT 中写实际命令。
+如果没有新增 `tests/storage/web-clipping-context.test.ts`，请说明原因，并用等价定向测试覆盖上述 helper 行为。
 
 ## Report Back
 
 完成后在 `docs/collaboration/REPORT.md` 写：
 
+- 状态：完成/部分完成/阻塞。
 - 修改文件列表。
-- 启动分支行为说明：first start / complete structure / missing structure / skipped repair。
-- 哪些问题可自动修复，哪些不可自动修复。
-- 新增测试覆盖。
+- 剪藏 embed 提取规则。
+- 摘要生成和长度限制。
+- AI prompt/analysis 接入点。
+- 缺失文件和失败处理。
 - Verification 命令和结果。
-- 是否发现现有启动顺序还有其他会提前写 Vault 的路径；只报告，不要扩大范围修。
+- 未做事项或后续建议。

@@ -1,6 +1,6 @@
 {
   "name": "tracemind",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Entity-centric AI knowledge extraction from daily journals with Context Cards",
   "main": "main.js",
   "scripts": {

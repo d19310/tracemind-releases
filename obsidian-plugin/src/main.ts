@@ -1305,7 +1305,7 @@ class AIProviderAdapter {
   /**
    * Analyze a diary block using LLM entity extraction.
    */
-  async analyzeBlock(content: string, blockId = ''): Promise<any> {
+  async analyzeBlock(content: string, blockId = '', extraContext?: string): Promise<any> {
     // Populate existing cards from entity index
     const existingCards = new Map<string, { name: string; cardType: CardType; maturity: string }>();
     for (const entry of this.plugin.entityIndex.entries) {
@@ -1335,7 +1335,7 @@ class AIProviderAdapter {
       enableThinking: provider.enableThinking,
       reasoningEffort: provider.reasoningEffort,
       profileContext: profileContext || undefined,
-    }, this.plugin.entityIndex.entries);
+    }, this.plugin.entityIndex.entries, extraContext);
     console.log('[TraceMind] analyzeBlock result entities:', tmResult.entities.length, tmResult);
 
     // Convert to the format expected by block-editor.ts and AI panel

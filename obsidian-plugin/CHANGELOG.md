@@ -5,6 +5,16 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.4] - 2026-05-09
+
+### Added
+- **日记附件** — 输入框左下角新增 `+` 附件按钮，支持新建和追加日记时上传附件到 `Daily/attachments`
+- **网页剪藏** — 日记中的网页链接可确认抓取，剪藏内容保存到 `Daily/webclippings` 并替换为 Obsidian embed
+- **剪藏上下文摘要** — AI 分析会读取剪藏文件并先压缩摘要，再作为附加上下文参与实体分析
+
+### Changed
+- **协作流程** — Codex + worker/Claude 协作方式调整为更省 token 的任务卡/验收模式
+
 ## [1.5.3] - 2026-05-09
 
 ### Fixed

@@ -198,6 +198,7 @@ export class AnalysisService {
     existingCards: Map<string, { name: string; cardType: CardType; maturity: string }>,
     llmConfig?: LLMConfig | null,
     entityIndexEntries?: IndexEntry[],
+    extraContext?: string,
   ): Promise<AnalysisResult> {
     // Step 1: AC pre-scan for known entities in diary text
     const acMatches = entityIndexEntries && entityIndexEntries.length > 0
@@ -251,6 +252,7 @@ export class AnalysisService {
         // Pass known entity names to LLM so it can skip them
         const enhancedConfig = {
           ...llmConfig,
+          extraContext,
           profileContext: llmConfig.profileContext
             ? llmConfig.profileContext + (candidateInfo ? '\n\n已知实体（已建档，不要重复提取，注意相似名称）：' + candidateInfo : '')
             : (candidateInfo ? '\n\n已知实体（已建档，不要重复提取，注意相似名称）：' + candidateInfo : ''),

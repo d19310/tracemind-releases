@@ -9,9 +9,15 @@
  * - Each block: H3 timestamp + content, sub-blocks as bullet points
  */
 
-import { ItemView, WorkspaceLeaf, TFile, TFolder, setIcon } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, TFolder, setIcon, MarkdownRenderer, Notice } from 'obsidian';
 import type TraceMindPlugin from '../main';
 import { loadTemplate } from '../utils/template-loader';
+import { ensureParentFolder } from '../vault/vault';
+import { sanitizeAttachmentFileName, makeUniqueAttachmentPath, attachmentEmbed, insertAtCursorValue } from '../storage/diary-attachments';
+import { extractURLs, isWechatURL, clipWebpage } from '../utils/web-clipper';
+import { clipWechatWithOpenCliToTemp } from '../utils/opencli-web-clipper';
+import { clippingFromClipResult, formatWebClippingMarkdown, makeUniqueWebClippingPath, buildWebClippingFileName, webClippingEmbed, replaceUrlWithEmbed } from '../storage/web-clippings';
+import { extractWebClippingEmbedPaths, summarizeWebClippingMarkdown, buildWebClippingContext } from '../storage/web-clipping-context';
 
 export const VIEW_TYPE_BLOCK_EDITOR = 'tracemind-block-editor';
 
@@ -807,6 +813,34 @@ export class BlockEditorView extends ItemView {
 				flex-shrink: 0;
 			}
 
+			.lifewiki-input-left-actions {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				min-width: 0;
+			}
+
+			.lifewiki-attachment-btn {
+				width: 36px;
+				height: 36px;
+				border-radius: 50%;
+				border: none;
+				background: transparent;
+				color: var(--text-muted);
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				cursor: pointer;
+				font-size: 22px;
+				line-height: 1;
+				flex-shrink: 0;
+			}
+
+			.lifewiki-attachment-btn:hover {
+				background: var(--background-modifier-hover);
+				color: var(--text-normal);
+			}
+
 			/* Append Mode Actions (button + cancel) */
 			.lifewiki-append-mode-actions {
 				display: none;
@@ -1114,8 +1148,25 @@ export class BlockEditorView extends ItemView {
 			cls: 'lifewiki-input-bottom'
 		});
 
-		// Hint text on bottom-left (normal mode)
-		this.inputHintEl = inputBottomEl.createEl('span', {
+		// Left group: attachment button + hint
+		const leftGroup = inputBottomEl.createEl('div', { cls: 'lifewiki-input-left-actions' });
+
+		// Hidden file input
+		const fileInput = inputBottomEl.createEl('input', {
+			attr: { type: 'file', style: 'display:none' },
+		}) as HTMLInputElement;
+		fileInput.addEventListener('change', () => { void this.handleAttachmentSelect(fileInput); });
+
+		// Attachment (+) button
+		const attachBtn = leftGroup.createEl('button', {
+			cls: 'lifewiki-attachment-btn',
+			attr: { type: 'button', title: '添加附件' },
+			text: '+',
+		});
+		attachBtn.addEventListener('click', () => { fileInput.click(); });
+
+		// Hint text
+		this.inputHintEl = leftGroup.createEl('span', {
 			cls: 'lifewiki-input-hint',
 			text: 'Enter 发送'
 		});
@@ -1551,11 +1602,9 @@ export class BlockEditorView extends ItemView {
 					cls: 'lifewiki-block-timestamp'
 				});
 
-				// Content
-				mainWrapper.createEl('span', {
-					text: block.content,
-					cls: 'lifewiki-block-content'
-				});
+				// Content — render markdown for embed preview
+				const contentEl = mainWrapper.createEl('span', { cls: 'lifewiki-block-content' });
+				void MarkdownRenderer.render(this.app, block.content, contentEl, `Daily/${this.currentDate}.md`, this);
 
 				const tagsEl = mainWrapper.createEl('div', {
 					cls: 'lifewiki-block-tags'
@@ -1621,11 +1670,9 @@ export class BlockEditorView extends ItemView {
 					// Store reference for saving
 					(this as any).editContentTextarea = contentTextarea;
 				} else {
-					// Display mode
-					childBody.createEl('div', {
-						text: child.content,
-						cls: 'lifewiki-block-child-content'
-					});
+					// Display mode — render markdown for embed preview
+					const childContentEl = childBody.createEl('div', { cls: 'lifewiki-block-child-content' });
+					void MarkdownRenderer.render(this.app, child.content, childContentEl, `Daily/${this.currentDate}.md`, this);
 				}
 
 				// Click handler for child block - load parent session in AI panel
@@ -2079,6 +2126,44 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Update input area for append mode
 	 */
+	private async handleAttachmentSelect(fileInput: HTMLInputElement): Promise<void> {
+		const files = fileInput.files;
+		if (!files || files.length === 0) return;
+		if (!this.inputTextarea) return;
+
+		try {
+			for (const file of Array.from(files)) {
+				const safeName = sanitizeAttachmentFileName(file.name);
+				const vaultPath = makeUniqueAttachmentPath(safeName,
+					(p: string) => this.app.vault.getAbstractFileByPath(p) !== null,
+				);
+
+				await ensureParentFolder(this.app, vaultPath);
+
+				const arrayBuf = await file.arrayBuffer();
+				await this.app.vault.createBinary(vaultPath, arrayBuf);
+
+				const embed = attachmentEmbed(vaultPath);
+				const result = insertAtCursorValue(
+					this.inputTextarea.value, embed,
+					this.inputTextarea.selectionStart, this.inputTextarea.selectionEnd,
+				);
+				this.inputTextarea.value = result.value;
+				this.inputTextarea.selectionStart = result.cursor;
+				this.inputTextarea.selectionEnd = result.cursor;
+				this.inputValue = this.inputTextarea.value;
+				// Update hint only in normal mode (append mode hint is hidden)
+				if (!this.isAppendMode) {
+					this.inputHintEl!.textContent = `${this.inputTextarea.value.length}/250 · Enter 发送`;
+				}
+			}
+		} catch (e) {
+			new Notice('附件保存失败: ' + (e as Error).message);
+		} finally {
+			fileInput.value = '';
+		}
+	}
+
 	private updateInputAreaForAppendMode() {
 		if (!this.inputTextarea || !this.inputHintEl || !this.appendModeActionsEl || !this.appendSubmitBtn) {
 			return;
@@ -2124,8 +2209,10 @@ export class BlockEditorView extends ItemView {
 	private async submitAppend() {
 		if (!this.isAppendMode || !this.appendModeBlockId) return;
 
-		const content = this.inputTextarea?.value.trim();
+		let content = this.inputTextarea?.value.trim();
 		if (!content) return;
+
+		content = await this.prepareContentBeforeSubmit(content);
 
 		const parentBlock = this.blocks.find(b => b.id === this.appendModeBlockId);
 		if (!parentBlock) return;
@@ -2392,11 +2479,94 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Submit a new block
 	 */
+	/**
+	 * Detect URLs in content, ask user to clip, save clippings, replace URLs with embeds.
+	 */
+	private async prepareContentBeforeSubmit(content: string): Promise<string> {
+		const urls = extractURLs(content);
+		if (urls.length === 0) return content;
+
+		if (!confirm(`检测到 ${urls.length} 个网页链接，是否抓取并保存到 Daily/webclippings？`)) {
+			return content;
+		}
+
+		let result = content;
+		let successCount = 0;
+		let failCount = 0;
+
+		for (const url of urls) {
+			const clipped = await this.clipUrlToWebClipping(url);
+			if (clipped) {
+				const embed = webClippingEmbed(clipped.path);
+				result = replaceUrlWithEmbed(result, url, embed);
+				successCount++;
+			} else {
+				failCount++;
+			}
+		}
+
+		if (failCount === 0 && successCount > 0) {
+			new Notice(`网页剪藏已保存 (${successCount} 个)`);
+		} else if (failCount > 0 && successCount > 0) {
+			new Notice(`部分网页剪藏失败 (${successCount} 成功 / ${failCount} 失败)，已保留原链接`);
+		} else if (failCount > 0 && successCount === 0) {
+			new Notice('网页剪藏失败，已保留原链接');
+		}
+
+		return result;
+	}
+
+	private async clipUrlToWebClipping(url: string): Promise<{ path: string; title: string } | null> {
+		try {
+			const today = this.currentDate;
+			const clippedAt = new Date().toISOString();
+
+			let clipResult: any = null;
+			let source: 'opencli-weixin' | 'web-clipper' = 'web-clipper';
+
+			if (isWechatURL(url)) {
+				// Try OpenCLI first
+				const ocResult = await clipWechatWithOpenCliToTemp(url);
+				if (ocResult.ok && ocResult.markdown) {
+					clipResult = { title: ocResult.title || '', content: ocResult.markdown, url };
+					source = 'opencli-weixin';
+				}
+			}
+
+			// Fallback to web-clipper
+			if (!clipResult) {
+				const webClip = await clipWebpage(url);
+				if (webClip.error || !webClip.content) return null;
+				clipResult = webClip;
+				source = 'web-clipper';
+			}
+
+			const doc = clippingFromClipResult(clipResult, source, clippedAt);
+			const fileName = buildWebClippingFileName({ title: doc.title, url, date: today });
+			const path = makeUniqueWebClippingPath(fileName,
+				(p: string) => this.app.vault.getAbstractFileByPath(p) !== null,
+			);
+
+			await ensureParentFolder(this.app, path);
+			const md = formatWebClippingMarkdown(doc);
+
+			const existing = this.app.vault.getAbstractFileByPath(path);
+			if (!existing) {
+				await this.app.vault.create(path, md);
+			}
+
+			return { path, title: doc.title };
+		} catch {
+			return null;
+		}
+	}
+
 	private async submitBlock(textarea: HTMLTextAreaElement) {
-		const content = textarea.value.trim();
+		let content = textarea.value.trim();
 		if (!content || this.isLoading) return;
 
 		this.isLoading = true;
+		content = await this.prepareContentBeforeSubmit(content);
 
 		const now = new Date();
 		const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -2530,9 +2700,34 @@ export class BlockEditorView extends ItemView {
 			}
 		}
 
+		// Build web clipping context from embeds in block content
+		let extraContext: string | undefined;
+		const clippingPaths = extractWebClippingEmbedPaths(block.content);
+		if (clippingPaths.length > 0) {
+			const items: Array<{ path: string; title?: string; url?: string; summary: string }> = [];
+			for (const path of clippingPaths) {
+				try {
+					const afile = this.app.vault.getAbstractFileByPath(path);
+					if (afile && 'extension' in afile) {
+						const markdown = await this.app.vault.read(afile as TFile);
+						const { title, url, summary } = summarizeWebClippingMarkdown(markdown);
+						items.push({ path, title, url, summary });
+					} else {
+						console.warn(`[TraceMind] web clipping not found: ${path}`);
+					}
+				} catch (e) {
+					console.warn(`[TraceMind] failed to read web clipping ${path}:`, (e as Error).message);
+				}
+			}
+			if (items.length > 0) {
+				extraContext = buildWebClippingContext(items);
+				console.log('[TraceMind] built web clipping context:', extraContext.substring(0, 200));
+			}
+		}
+
 		try {
 			const aiProvider = this.plugin.getAIProvider();
-			result = await aiProvider.analyzeBlock(block.content, block.id);
+			result = await aiProvider.analyzeBlock(block.content, block.id, extraContext);
 			console.log('[TraceMind] block-editor: analyzeBlock result:', result);
 			console.log('[TraceMind] block-editor: aiView exists:', !!aiView);
 

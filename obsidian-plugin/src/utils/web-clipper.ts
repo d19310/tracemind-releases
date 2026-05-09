@@ -23,16 +23,17 @@ export interface ClipResult {
 	truncated?: boolean;
 }
 
-// URL extraction regex
-const URL_REGEX = /(https?:\/\/[^\s<>"']+)/g;
+// URL extraction regex — stops at whitespace, angle brackets, quotes, and non-ASCII characters
+const URL_REGEX = /(https?:\/\/[^\s<>"'\u0080-\uffff]+)/g;
 
-/**
- * Extract all URLs from text
- */
+// Strip trailing punctuation that may have been captured with the URL
+const TRAILING_PUNCTUATION = /[，。,.;;:!?：)）】】>}]+$/;
+
 export function extractURLs(text: string): string[] {
 	if (!text) return [];
 	const matches = text.match(URL_REGEX);
-	return matches ? [...new Set(matches)] : [];
+	if (!matches) return [];
+	return [...new Set(matches.map(u => u.replace(TRAILING_PUNCTUATION, '')))];
 }
 
 /**

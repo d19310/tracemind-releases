@@ -48,6 +48,9 @@
 | done | Typecheck Fix 1：清理旧迁移遗留类型错误 | Claude Code | Codex 已验收；旧实体分类引用已清理，`tsc --noEmit` 纳入绿色基线 |
 | done | Release / Workspace Hygiene 1：发布后状态与工作区归档审计 | Claude Code | Codex 已验收；版本/artifact/status/仓库边界已报告，验证基线全绿 |
 | done | Vault Structure Startup Check 1：启动时校验 Vault 业务结构 | Claude Code | Codex 已验收；结构完整静默启动，缺失/异常时弹窗确认修正，启动成功 Notice 和重复 skip Notice 已移除 |
+| done | Diary Attachment Support 1：日记输入框附件支持 | Claude Code | Codex 已验收；`+` 附件按钮、`Daily/attachments/` 写入、embed 插入、append mode 和 Markdown 渲染均完成 |
+| done | Web Clipping Support 1：网页链接剪藏保存与替换 | Claude Code | Codex 已验收；URL 检测、用户确认、OpenCLI 微信抓取、web-clipper fallback、`Daily/webclippings/` 保存、URL 替换、中文标点 URL 边界和 OpenCLI wrapper 测试均完成 |
+| handoff | Web Clipping Context 1：剪藏摘要进入 AI 分析上下文 | Claude Code/worker | HANDOFF 已更新；读取当前 block 的剪藏 embed，生成长度受控摘要，并作为独立附加上下文传给实体提取 |
 
 ## 推荐修复顺序
 
@@ -127,9 +130,16 @@ rtk git diff --check
 | 2026-05-08 | Release / Workspace Hygiene 1 验收通过 | 版本文件均为 `1.5.1`，release artifact 边界已列清，git status 已分组；`tsc`、lint、全量测试、build、diff check 均通过 | Codex review |
 | 2026-05-09 | Vault Structure Startup Check 1 进入交接 | 用户要求每次启动插件校验 Vault 文件目录；结构完整静默启动，缺失或变更时提示用户并经确认后修正 | 用户消息 + Codex |
 | 2026-05-09 | Vault Structure Startup Check 1 验收通过 | 非首次启动先校验 Vault 结构；完整时静默初始化，缺失/异常时弹窗确认修正；启动成功 Notice 和重复 skip Notice 已移除，验证基线通过 | Codex review |
+| 2026-05-09 | Diary Attachment Support 1 进入交接 | 用户要求恢复日记输入附件能力；普通输入和 append mode 都要支持，附件保存到 `Daily/attachments/` 并以 `![[...]]` 写入日记；网页剪藏/OpenCLI/摘要作为后续独立任务 | 用户消息 + Codex |
+| 2026-05-09 | Diary Attachment Support 1 验收通过 | 日记输入框左下角 `+` 附件按钮已恢复；附件保存到 `Daily/attachments/`，同名去重并插入 Obsidian embed；普通输入和 append mode 均支持；block 内容改用 MarkdownRenderer 展示；验证基线通过 | Codex review |
+| 2026-05-09 | Web Clipping Support 1 进入交接 | 用户要求识别日记中的网页链接，经确认后抓取网页/微信公众号内容，剪藏保存到 `Daily/webclippings/` 并替换原 URL；摘要压缩和 AI 上下文接入拆到后续任务 | 用户消息 + Codex |
+| 2026-05-09 | Web Clipping Support 1 验收通过 | 网页 URL 检测、用户确认、微信 OpenCLI 优先、普通网页 fallback、剪藏保存、URL 替换、中文标点 URL 边界和 OpenCLI wrapper 测试均通过；摘要进入 AI 上下文作为下一任务 | Codex review |
+| 2026-05-09 | Web Clipping Context 1 进入交接 | 用户确认附件和网页链接功能要完整闭环；当前缺口是 AI 分析尚未读取剪藏并以摘要形式作为上下文传入 | 用户消息 + Codex |
+| 2026-05-09 | Codex + Claude/worker 协作模式优化 | 为节省 token 和减少返工，默认采用小任务 Codex 直接处理、中等任务 worker 实现、大任务拆分；worker 失败后带 job/check/diff 摘要升级 pro；Codex 验收只读关键 diff/checks，不跟读完整日志 | 用户消息 + Codex |
 
 ## 开放问题
 
 - Entity Index 的 `AnalysisOrchestrator` 内部索引副本是否需要独立持久化，后续结合实际调用路径再定。
 - `tracemind-exploration-design/` 是否纳入私有仓库仍需用户决定；不要进入公开 release 仓库。
+- Web Clipping Context 1 后续处理：剪藏摘要进入 AI 分析上下文；本轮不做二次 LLM 摘要、缓存或设置项。
 - 下一步可提交当前 1.5.1 基线，或继续处理 local agent 稳定化。

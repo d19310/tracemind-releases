@@ -37,6 +37,38 @@ describe('LLM Entity Extractor - Prompt Builder', () => {
     assert.ok(prompt.includes('type'));
     assert.ok(prompt.includes('name'));
   });
+
+  it('includes extraContext when provided', () => {
+    const extraCtx = '## 附加网页剪藏摘要\n\n1. 标题：Test Article\n   摘要：Summary text.';
+    const prompt = buildExtractionPrompt('diary', undefined, extraCtx);
+    assert.ok(prompt.includes('附加网页剪藏摘要'));
+    assert.ok(prompt.includes('Test Article'));
+    assert.ok(prompt.includes('Summary text.'));
+  });
+
+  it('does not include extra context when not provided (backward compat)', () => {
+    const prompt = buildExtractionPrompt('diary');
+    assert.ok(!prompt.includes('附加网页剪藏摘要'));
+  });
+
+  it('extraContext appears before diary text and profile context', () => {
+    const extraCtx = '## 附加网页剪藏摘要\n\nClip summary.';
+    const profileCtx = 'User profile info.';
+    const prompt = buildExtractionPrompt('日记内容', profileCtx, extraCtx);
+    const extraIdx = prompt.indexOf('附加网页剪藏摘要');
+    const profileIdx = prompt.indexOf('User profile info');
+    const diaryIdx = prompt.indexOf('日记内容');
+    assert.ok(extraIdx >= 0);
+    assert.ok(profileIdx >= 0);
+    assert.ok(extraIdx < profileIdx, 'extraContext should appear before profileContext');
+    assert.ok(profileIdx < diaryIdx, 'profileContext should appear before diary text');
+  });
+
+  it('extraContext does not change prompt structure when empty', () => {
+    const promptWith = buildExtractionPrompt('diary', undefined, '');
+    const promptWithout = buildExtractionPrompt('diary');
+    assert.equal(promptWith, promptWithout);
+  });
 });
 
 describe('LLM Entity Extractor - Response Parser', () => {

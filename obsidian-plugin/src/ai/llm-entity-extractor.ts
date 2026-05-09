@@ -30,8 +30,16 @@ export interface LLMExtractionResult {
 /**
  * Build a prompt for LLM entity extraction.
  */
-export function buildExtractionPrompt(diaryText: string, profileContext?: string): string {
-  let prompt = `你是一个精准的实体提取和日记分类专家。请对以下日记文本进行分析。
+export function buildExtractionPrompt(diaryText: string, profileContext?: string, extraContext?: string): string {
+  let prompt = `你是一个精准的实体提取和日记分类专家。请对以下日记文本进行分析。`;
+
+  // Inject extra context (e.g. web clipping summaries) before the main tasks,
+  // as an independent section — never mixed with profileContext.
+  if (extraContext) {
+    prompt += `\n\n${extraContext}`;
+  }
+
+  prompt += `
 
 ## 任务 1：领域分类
 
@@ -224,6 +232,7 @@ export async function extractEntitiesWithLLM(
     enableThinking?: boolean;
     reasoningEffort?: '' | 'high' | 'max';
     profileContext?: string;
+    extraContext?: string;
   },
 ): Promise<LLMExtractionOutput> {
   const provider = (options.provider || 'openai') as ProviderType;
@@ -243,7 +252,7 @@ export async function extractEntitiesWithLLM(
   }
 
   console.log('[TraceMind] LLM extract called, provider:', provider, 'baseUrl:', options.baseUrl, 'model:', options.model);
-  const prompt = buildExtractionPrompt(diaryText, options.profileContext);
+  const prompt = buildExtractionPrompt(diaryText, options.profileContext, options.extraContext);
   console.log('[TraceMind] LLM prompt:', prompt.substring(0, 200));
 
   // Use buildRequest from provider-config for URL/headers/body construction
