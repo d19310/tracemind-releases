@@ -2,210 +2,298 @@
 
 ## 当前任务
 
-Release Prep Audit 1：版本整理与发布准备审计修复。
+Vault Structure Startup Check 1：每次启动插件时校验 Vault 业务目录，缺失或结构异常时提示用户确认修正。
 
 ## Goal
 
-最近多轮功能修复已经通过 lint、test、build，但工作区进入发布前明显混杂状态：源码/测试/构建产物、本地 Vault、`.DS_Store`、探索设计文档和一次性脚本都出现在 `git status` 中。现在目标不是继续加功能，而是把 TraceMind Obsidian 插件整理到“可以判断是否能发 release”的状态。
+用户要求：
 
-本轮目标：
+> 每次启动插件的时候检查 vault 文件目录是否符合要求，是否有变更和缺失，如果有提示用户并让用户确认修正，如果符合要求就静默启动，不用提示用户。
 
-- 固化版本一致性检查，避免 `package.json`、`package-lock.json`、`manifest.json` 再次漂移。
-- 修复安装脚本中仍然硬编码旧版本 fallback 的问题。
-- 明确 release 产物边界：Obsidian 插件 release 至少应包含 `main.js` 与 `manifest.json`，只有存在 `styles.css` 时才包含它。
-- 补齐忽略规则，避免本地 Vault、`.DS_Store`、依赖目录等开发产物继续污染状态。
-- 生成一份清晰的发布审计报告，列出哪些文件属于本次功能主线、哪些属于本地/无关/需用户决定。
+当前非首次启动路径在 `src/main.ts` 中会直接调用 `ensureVaultStructure()`，这会静默创建缺失目录。新行为必须改成：
 
-## Current Audit Findings From Codex
+- 每次插件启动都校验 TraceMind 所需 Vault 结构。
+- 如果结构完整：静默继续启动，不弹窗，不 Notice。
+- 如果结构缺失或关键路径类型错误：弹窗提示用户，列出问题，让用户确认是否修正。
+- 只有用户确认修正后，才创建缺失目录/档案或修复可安全修复的问题。
+- 用户取消时，不静默修复；插件可以继续加载，但要明确提示“结构未修正，部分功能可能不可用”。
 
-请先阅读并验证这些发现，不要盲改：
+## Current Code Facts
 
-1. 版本号当前一致：
-   - `package.json`: `1.4.3`
-   - `package-lock.json` 顶层与 root package: `1.4.3`
-   - `manifest.json`: `1.4.3`
-   - `versions.json`: 当前不存在
-2. `install.sh` 仍有旧版本 fallback：
-   - 读取本地 `manifest.json` 失败时 fallback 是 `1.4.2`
-   - 无 `manifest.json` 时 fallback 是 `v1.4.2`
-   - 当前应避免旧版本硬编码继续存在；可改成单一 `DEFAULT_VERSION="v1.4.3"`，或更稳妥地允许用户用环境变量/参数覆盖。
-3. `main.js` 已存在，大小约 264 KB；`styles.css` 当前不存在。
-4. `.gitignore` 当前只有：
-   - `node_modules/`
-   - `*.js`
-   这不足以挡住根目录 `.DS_Store`、`obsidian-plugin/.DS_Store`、`obsidian-plugin/TraceMindVault/`。
-5. 根目录没有 `.gitignore`。
-6. 当前未跟踪项中有：
-   - 应该忽略的本地产物：`.DS_Store`、`obsidian-plugin/.DS_Store`、`obsidian-plugin/TraceMindVault/`
-   - 本轮/近期实现可能需要保留的新源码测试：`eslint.config.mjs`、`src/ai/provider-error-message.ts`、`src/settings-provider-utils.ts`、`src/storage/entity-writer.ts`、`src/storage/insight-writer.ts`、`src/views/calendar-utils.ts`、对应测试等
-   - 一次性或待决定：`scripts/migrate-theme-subtypes.sh`
-   - 项目外探索设计：`tracemind-exploration-design/`，不要擅自删除或忽略，报告给用户决定
-7. `manifest.json` 当前 `isDesktopOnly: false`，但本地 agent 模块使用 `child_process`。这些模块是动态 import。此项本轮只做风险记录，不要改本地 agent 架构或 manifest，除非发现构建/运行硬错误。
+请先阅读这些文件，不要重写目录规则：
 
-## Repository / Release Boundary
+- `src/core/first-start-constants.ts`
+  - `REQUIRED_DIRS`
+  - `PROFILE_PATH`
+  - `getMissingFirstStartItems(vault)`
+  - `isFirstStart(vault)`
+- `src/core/first-start.ts`
+  - `showFirstStartWizard(app, onComplete)`
+  - 首次启动向导已经能创建目录和 `TraceMind/PROFILE.md`。
+- `src/main.ts`
+  - `TRACEMIND_DIRS` 当前是本地重复目录清单。
+  - `onload()` 当前在非首次启动分支中静默调用 `ensureVaultStructure()`，这正是本轮要改的行为。
+  - `ensureVaultStructure()` 只创建目录，不创建 `PROFILE.md`。
+- `src/core/profile-loader.ts`
+  - 已有 `PROFILE.md` 读写逻辑。
+- `tests/core/first-start.test.ts`
+  - 已覆盖首次启动常量和缺失项校验。
 
-用户已明确两个 GitHub 仓库的职责：
+## Product / UX Design
 
-- `github.com/d19310/TraceMind`：私有仓库，可以放源码、测试、协作文档和构建产物。
-- `github.com/d19310/tracemind-releases`：公开仓库，只发布构建产物，供用户公开下载。
+### 启动分支
 
-本轮整理时必须按这个边界判断：
+建议启动逻辑调整为：
 
-- `install.sh` 的下载源继续指向公开 release 仓库 `d19310/tracemind-releases`。
-- 公开 release 仓库不应包含源码、测试、协作文档、本地 Vault、`.DS_Store`、探索设计文档或迁移脚本。
-- 公开 release artifact 清单至少是 `main.js`、`manifest.json`；`styles.css` 仅在存在时作为可选 artifact。
-- 私有 `TraceMind` 仓库可以保留 `main.js` 构建产物，所以不要因为 `.gitignore` 有 `*.js` 就假设 `main.js` 必须从私有仓库消失；如果要调整 ignore，需要明确不破坏已跟踪的 `main.js`。
-- 本轮不创建跨仓库发布自动化；只把边界写清楚、测试 release artifact，并在 REPORT 中说明人工发布到公开仓库时应复制哪些文件。
+1. 插件加载 settings/profile/config/views/commands 等轻量初始化。
+2. 判断 `isFirstStart(this.app.vault.adapter)`：
+   - 如果 `true`：继续使用现有首次启动向导。
+   - 向导完成后执行 `ensureVaultStructure()` + `rebuildEntityIndex()`。
+3. 如果不是首次启动：
+   - 先校验 Vault 结构。
+   - 没问题：直接 `initializeEntityIndex()`，无弹窗。
+   - 有问题：打开“Vault 结构需要修正”弹窗。
+     - 用户点“修正”：执行修正，再重新校验；成功后 `initializeEntityIndex()`。
+     - 用户点“暂不修正”：不创建目录；显示一个简短 Notice，随后仍可继续加载，但不要启动会依赖缺失结构的写入型操作。
+
+### 校验范围
+
+必须检查：
+
+- 目录：
+  - `Daily`
+  - `Person`
+  - `Object`
+  - `Theme`
+  - `TraceMind`
+  - `TraceMind/sessions`
+  - `TraceMind/index`
+  - `TraceMind/insights`
+- 文件：
+  - `TraceMind/PROFILE.md`
+
+不仅检查“存在”，也要尽量检查类型：
+
+- 必需目录路径如果存在但不是目录，应报告为结构异常。
+- `TraceMind/PROFILE.md` 如果存在但不是文件，应报告为结构异常。
+
+不要把额外目录/文件当成异常。用户 Vault 中允许有其他内容。
+
+### 修正规则
+
+可自动修正：
+
+- 缺失目录：创建目录。
+- 缺失 `TraceMind/PROFILE.md`：使用现有 profile template 或 helper 创建默认 profile。
+
+不可自动覆盖：
+
+- 必需目录路径已存在但其实是文件。
+- `TraceMind/PROFILE.md` 路径已存在但其实是目录。
+
+遇到不可自动修正项时：
+
+- 弹窗中说明“需要用户手动处理”。
+- 点击“修正”只能修复可修复项；不可修复项仍应保留在重新校验结果中。
+- 不要删除、覆盖或重命名用户现有文件。
 
 ## Scope
 
 允许修改：
 
-- 根目录 `.gitignore`（如果需要新增）
-- `obsidian-plugin/.gitignore`
-- `obsidian-plugin/install.sh`
-- `obsidian-plugin/tests/install-structure.test.ts`，或新增很小的 release/version 测试文件
-- `obsidian-plugin/docs/install-windows.md`（仅当 release 产物说明需要同步）
-- `obsidian-plugin/CHANGELOG.md`（仅补发布整理相关条目，不要重写历史）
-- `obsidian-plugin/docs/collaboration/REPORT.md`
+- `src/core/first-start-constants.ts`
+- `src/core/first-start.ts`
+- 可新增 `src/core/vault-structure.ts` 或 `src/core/vault-structure-modal.ts`
+- `src/main.ts`
+- `tests/core/first-start.test.ts`
+- 可新增 `tests/core/vault-structure.test.ts`
+- `docs/collaboration/REPORT.md`
 
-可只读参考：
+只读参考：
 
-- `package.json`
-- `package-lock.json`
-- `manifest.json`
-- `esbuild.config.mjs`
-- `main.js`
-- `docs/collaboration/PLAN.md`
+- `src/core/profile-loader.ts`
+- `src/vault/vault.ts`
+- `src/storage/entity-index-store.ts`
 - `docs/collaboration/ARCHITECTURE.md`
 
 ## Non-goals
 
-- 不修改 `src/` 下功能逻辑。
-- 不修改 AI provider、entity subtype、Calendar、本地 agent、Vault 写入逻辑。
-- 不 bump 新版本号；当前继续使用 `1.4.3`，除非用户明确要求。
-- 不删除用户文件，不运行 `git clean`，不移动 `tracemind-exploration-design/`。
-- 不提交、不 stage、不重置工作区。
-- 不把真实 Vault 路径 `/Users/vincent/OneDrive/TraceMindVault` 写进发布脚本或 release 文档。
-- 不把 `node_modules/`、本地测试 Vault、`.DS_Store` 纳入 release。
-- 不把源码、测试、协作文档或探索设计文档纳入公开 `tracemind-releases` 仓库。
-- 不实现推送到 `github.com/d19310/tracemind-releases` 的自动化。
+- 不改安装脚本。
+- 不改 release/version。
+- 不改 Entity Index 持久化格式。
+- 不改 provider、AI Panel、Settings、Calendar。
+- 不做真实 Vault 迁移。
+- 不删除、覆盖、重命名任何用户已有 Vault 文件。
+- 不把额外目录当成异常。
+- 不在首次启动向导前创建业务目录。
 
-## Required Work
+## Implementation Notes
 
-### 1. 版本一致性测试
+### 1. 目录规则只保留一个来源
 
-补一个真实读取生产文件的测试，至少断言：
+优先复用 `REQUIRED_DIRS` 和 `PROFILE_PATH`。
 
-- `package.json.version === manifest.json.version`
-- `package-lock.json.version === package.json.version`
-- `package-lock.json.packages[""].version === package.json.version`
-- `manifest.json.id === "tracemind"`
-- `manifest.json.js === "main.js"`
+如果 `src/main.ts` 的 `TRACEMIND_DIRS` 继续存在，必须保证它直接来自 `REQUIRED_DIRS`，不要维护第二份硬编码目录清单。
 
-不要在测试里复制版本字符串；测试应读取文件。
+推荐：
 
-### 2. Release 产物边界测试
+```ts
+import { REQUIRED_DIRS, PROFILE_PATH } from './core/first-start';
+```
 
-补测试或增强 `tests/install-structure.test.ts`：
+然后 `ensureVaultStructure()` 遍历 `REQUIRED_DIRS`。
 
-- `main.js` 存在且非空。
-- `manifest.json` 存在且 JSON 可解析。
-- 如果 `styles.css` 不存在，测试不失败；如果存在，报告/测试把它视为可选 release artifact。
-- release artifact 清单应明确至少为 `main.js`、`manifest.json`。
-- 测试或报告中要区分“私有仓库可保留的构建产物”和“公开 release 仓库应只发布的产物”。
+### 2. 新增可测试的结构校验 helper
 
-可以新建 `tests/release-prep.test.ts`，比塞进旧的 Vault structure 测试更清楚。
+建议新增纯 helper，便于测试：
 
-### 3. 修复 `install.sh` 版本 fallback
+```ts
+export type VaultStructureIssueType = 'missing_dir' | 'missing_file' | 'wrong_type';
 
-处理当前 `v1.4.2` 旧 fallback。
+export interface VaultStructureIssue {
+  type: VaultStructureIssueType;
+  path: string;
+  expected: 'folder' | 'file';
+  actual?: 'folder' | 'file' | 'unknown';
+  label: string;
+  repairable: boolean;
+}
+```
 
-建议方式：
+校验函数可以是同步抽象：
 
-- 定义一个单一默认值，例如 `DEFAULT_VERSION="v1.4.3"`。
-- 优先使用环境变量 `TRACEMIND_VERSION`（可选但推荐），其次读本地 `manifest.json`，最后使用 `DEFAULT_VERSION`。
-- 保持下载 URL 仍使用 GitHub release asset：
-  `https://github.com/d19310/tracemind-releases/releases/download/${VERSION}/...`
-- 不改变“安装脚本不创建业务目录”的原则。
-- 不重新引入未使用工具检查，比如 `unzip`。
+```ts
+export interface VaultStructureAccess {
+  getType(path: string): 'folder' | 'file' | null;
+}
 
-### 4. 补齐 ignore 规则
+export function getVaultStructureIssues(vault: VaultStructureAccess): VaultStructureIssue[] { ... }
+```
 
-请谨慎处理：
+在 Obsidian 实现里，`getType()` 可通过 `app.vault.getAbstractFileByPath(path)` 判断 `TFolder` / `TFile`。如果不想 import `TFolder/TFile`，也可以检查对象的 `children` / `extension`，但更建议使用 Obsidian 类型。
 
-- 如果根目录没有 `.gitignore`，新增根目录 `.gitignore`，至少忽略：
-  - `.DS_Store`
-  - `obsidian-plugin/TraceMindVault/`
-- `obsidian-plugin/.gitignore` 至少忽略：
-  - `node_modules/`
-  - `.DS_Store`
-  - `TraceMindVault/`
-  - 可选：`*.js.map`
-- 不要简单忽略整个 `scripts/`，因为一次性迁移脚本可能需要用户决定。
-- 不要简单忽略 `tracemind-exploration-design/`，先在 REPORT 里列为“项目外探索文档，需用户决定是否纳入仓库或另行忽略”。
+### 3. 启动修正弹窗
 
-### 5. Changelog / docs 最小同步
+建议新增：
 
-检查 `CHANGELOG.md` 顶部 `1.4.3` 是否已经覆盖近期发布准备相关变化。
+```ts
+export function showVaultStructureRepairModal(
+  app: App,
+  issues: VaultStructureIssue[],
+  onRepair: () => Promise<VaultStructureIssue[]>,
+  onSkip: () => Promise<void> | void,
+  onComplete: () => Promise<void>,
+): void
+```
 
-可以追加简短条目，例如：
+弹窗内容：
 
-- release 准备检查：版本一致性测试、release artifact 检查、ignore 规则整理、安装脚本版本 fallback 修复。
+- 标题：`TraceMind Vault 结构需要修正`
+- 说明：检测到必要目录或档案缺失/异常。
+- 列表：逐条展示 issue label。
+- 按钮：
+  - `修正`：执行可修复项，重新校验。
+  - `暂不修正`：关闭，不修复。
 
-不要把所有历史功能重写成大段总结。
+如果修正后无 issue：
 
-### 6. Git 状态归类报告
+- Notice：`TraceMind Vault 结构已修正`
+- 关闭弹窗
+- 调用 `onComplete()`，继续 `initializeEntityIndex()`
 
-在 `docs/collaboration/REPORT.md` 中报告完整但分组后的状态：
+如果仍有不可修复 issue：
 
-- 发布必须包含或需要保留的源码/测试/配置文件。
-- 构建产物：`main.js`。
-- 本地开发产物：`.DS_Store`、`TraceMindVault/`，说明已通过 ignore 规则处理。
-- 需用户决定：`tracemind-exploration-design/`、`scripts/migrate-theme-subtypes.sh`（如果仍未跟踪）。
-- 明确没有清理/删除任何用户文件。
+- 在弹窗内更新状态，列出仍需手动处理项。
+- 不要调用 `onComplete()`。
+
+### 4. main.ts 启动顺序
+
+非首次启动分支从：
+
+```ts
+await this.ensureVaultStructure();
+await this.initializeEntityIndex();
+```
+
+改为类似：
+
+```ts
+await this.checkVaultStructureThenContinue();
+```
+
+其中：
+
+- 完整：直接 `initializeEntityIndex()`。
+- 有缺失：弹窗确认后再修正和初始化。
+- 用户跳过：不要静默修正；可以不初始化依赖完整结构的持久化索引，或只尝试 `loadEntityIndex()` 并捕获错误。请在 REPORT 说明选择。
+
+重要：首次启动向导仍然是 `PROFILE.md` 不存在时的默认入口，不能被新弹窗绕过。
+
+## Tests Required
+
+### Pure helper tests
+
+新增或扩展 core 测试：
+
+- 完整结构返回 `[]`。
+- 缺失目录返回 `missing_dir` 且 `repairable: true`。
+- 缺失 `PROFILE.md` 返回 `missing_file` 且 `repairable: true`。
+- 目录路径存在但类型为 file 返回 `wrong_type` 且 `repairable: false`。
+- `PROFILE.md` 存在但类型为 folder 返回 `wrong_type` 且 `repairable: false`。
+- 额外文件/目录不会报错。
+
+### Startup behavior tests
+
+如果 `TraceMindPlugin` 难以直接实例化，不要大范围重构。可以抽一个小的决策 helper，例如：
+
+```ts
+export type StartupStructureDecision =
+  | { kind: 'first_start' }
+  | { kind: 'continue' }
+  | { kind: 'prompt_repair'; issues: VaultStructureIssue[] };
+```
+
+测试：
+
+- first start 时仍走 `first_start`。
+- 非首次 + 完整结构 → `continue`。
+- 非首次 + 缺失目录 → `prompt_repair`。
+
+不要只测常量。
 
 ## Acceptance Criteria
 
-- 版本一致性测试覆盖 `package.json`、`package-lock.json`、`manifest.json`。
-- Release artifact 检查覆盖 `main.js`、`manifest.json`，`styles.css` 作为可选项处理。
-- `install.sh` 不再含 `1.4.2` 旧 fallback。
-- `.gitignore` 能让 `.DS_Store` 和 `obsidian-plugin/TraceMindVault/` 不再出现在普通 `git status --short` 的未跟踪项中。
-- 不改 `src/` 功能逻辑。
-- `CHANGELOG.md` 只做发布准备相关最小补充。
-- `REPORT.md` 有清晰 git 状态分类和验证结果。
-- `REPORT.md` 明确两个仓库职责，以及公开发布时应复制到 `tracemind-releases` 的文件清单。
-- `rtk npm run lint` 通过。
-- 新增/修改的 release/version 定向测试通过。
-- `rtk npm test` 通过。
-- `rtk npm run build` 通过。
-- `rtk git diff --check` 通过。
+- 非首次启动且结构完整：不弹窗，不 Notice，正常初始化 index。
+- 非首次启动且缺失目录/PROFILE：弹窗提示用户确认修正，不静默创建。
+- 用户确认修正后：创建缺失目录/PROFILE，重新校验，成功后继续初始化 index。
+- 用户取消/跳过：不创建目录/PROFILE，并有清晰 Notice。
+- 首次启动 `PROFILE.md` 缺失时：仍使用首次启动向导，不被修复弹窗替代。
+- 必需路径类型错误时：报告为不可自动修复，不覆盖用户文件。
+- `TRACEMIND_DIRS` 不再与 `REQUIRED_DIRS` 分叉。
+- 有定向测试覆盖校验 helper 和启动决策。
 
 ## Verification
 
-请按顺序运行并记录：
+在 `obsidian-plugin/` 下运行：
 
 ```bash
+rtk proxy npx tsc --noEmit
 rtk npm run lint
-rtk proxy npx tsx --test tests/release-prep.test.ts
+rtk proxy npx tsx --test tests/core/first-start.test.ts tests/core/vault-structure.test.ts
 rtk npm test
 rtk npm run build
 rtk git diff --check
-rtk git status --short
 ```
 
-如果你没有新建 `tests/release-prep.test.ts`，请把第二条换成实际定向测试文件，并在 REPORT 写清楚。
+如果测试文件名不同，请在 REPORT 中写实际命令。
 
 ## Report Back
 
-完成后更新 `docs/collaboration/REPORT.md`，必须包含：
+完成后在 `docs/collaboration/REPORT.md` 写：
 
-- 状态：完成、部分完成或阻塞。
-- 变更文件列表。
-- 版本一致性检查结果。
-- release artifacts 检查结果。
-- `install.sh` 版本选择逻辑说明。
-- ignore 规则变更说明。
-- `rtk git status --short` 的分组摘要。
-- 验证命令和结果。
-- 未处理项和需要用户决定的项。
+- 修改文件列表。
+- 启动分支行为说明：first start / complete structure / missing structure / skipped repair。
+- 哪些问题可自动修复，哪些不可自动修复。
+- 新增测试覆盖。
+- Verification 命令和结果。
+- 是否发现现有启动顺序还有其他会提前写 Vault 的路径；只报告，不要扩大范围修。

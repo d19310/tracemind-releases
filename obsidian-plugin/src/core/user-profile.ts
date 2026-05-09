@@ -44,7 +44,7 @@ const PROFILE_FRONTMATTER_KEYS = [
 export function profileToMarkdown(profile: UserProfile): string {
   const frontmatter: Record<string, unknown> = {};
   for (const key of PROFILE_FRONTMATTER_KEYS) {
-    const value = (profile as Record<string, unknown>)[key];
+    const value = (profile as unknown as Record<string, unknown>)[key];
     if (Array.isArray(value)) {
       frontmatter[key] = value.length > 0 ? value : [];
     } else if (value) {

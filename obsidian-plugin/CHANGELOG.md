@@ -5,6 +5,16 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.2] - 2026-05-09
+
+### Added
+- **启动时 Vault 结构校验** — 每次插件启动校验目录/档案完整性，缺失弹窗确认修正，完整静默继续
+- **Typecheck 修复** — `tsc --noEmit` 零错误，旧实体分组引用已清理
+
+### Fixed
+- **启动静默** — 结构完整时不再弹"TraceMind 已加载" Notice
+- **TRACEMIND_DIRS 不再分叉** — 直接引用 REQUIRED_DIRS
+
 ## [1.5.1] - 2026-05-08
 
 ### Changed

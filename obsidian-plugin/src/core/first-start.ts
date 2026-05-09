@@ -11,6 +11,7 @@
 
 import { App, Modal, Notice, Setting } from 'obsidian';
 import { ensureFolder } from '../vault/vault';
+import type { VaultStructureIssue } from './first-start-constants';
 import { getMissingFirstStartItems, REQUIRED_DIRS, PROFILE_PATH } from './first-start-constants';
 
 export { REQUIRED_DIRS, PROFILE_PATH, isFirstStart, VaultAdapter } from './first-start-constants';
@@ -160,5 +161,89 @@ class FirstStartModal extends Modal {
   onClose(): void {
     const { contentEl } = this;
     contentEl.empty();
+  }
+}
+
+/**
+ * Show a modal prompting the user to repair missing Vault structure.
+ * Runs on every non-first-start load when directories or PROFILE.md are missing.
+ */
+export function showVaultStructureRepairModal(
+  app: App,
+  issues: VaultStructureIssue[],
+  onRepair: () => Promise<VaultStructureIssue[]>,
+  onSkip: () => void,
+  onComplete: () => Promise<void>,
+): void {
+  const modal = new VaultRepairModal(app, issues, onRepair, onSkip, onComplete);
+  modal.open();
+}
+
+class VaultRepairModal extends Modal {
+  private issues: VaultStructureIssue[];
+  private onRepair: () => Promise<VaultStructureIssue[]>;
+  private onSkip: () => void;
+  private onComplete: () => Promise<void>;
+  private listEl: HTMLElement | null = null;
+
+  constructor(
+    app: App,
+    issues: VaultStructureIssue[],
+    onRepair: () => Promise<VaultStructureIssue[]>,
+    onSkip: () => void,
+    onComplete: () => Promise<void>,
+  ) {
+    super(app);
+    this.issues = issues;
+    this.onRepair = onRepair;
+    this.onSkip = onSkip;
+    this.onComplete = onComplete;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h2', { text: 'TraceMind Vault 结构需要修正' });
+    contentEl.createEl('p', { text: '检测到必要目录或档案缺失/异常：' });
+
+    this.listEl = contentEl.createEl('ul');
+    this.renderIssues();
+
+    new Setting(contentEl)
+      .addButton(btn => {
+        btn.setButtonText('修正').setCta()
+          .onClick(async () => {
+            this.issues = await this.onRepair();
+            if (this.issues.length === 0) {
+              new Notice('TraceMind Vault 结构已修正');
+              this.close();
+              await this.onComplete();
+            } else {
+              this.renderIssues();
+            }
+          });
+      })
+      .addButton(btn => {
+        btn.setButtonText('暂不修正')
+          .onClick(() => {
+            new Notice('结构未修正，部分功能可能不可用');
+            this.close();
+            this.onSkip();
+          });
+      });
+  }
+
+  private renderIssues() {
+    if (!this.listEl) return;
+    this.listEl.empty();
+    for (const issue of this.issues) {
+      const li = this.listEl.createEl('li', { text: issue.label });
+      if (!issue.repairable) {
+        li.createEl('span', { text: '（需手动处理）', cls: 'tracemind-repair-warning', attr: { style: 'color: #e74c3c' } });
+      }
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
   }
 }

@@ -6,7 +6,7 @@
 
 import { ItemView, WorkspaceLeaf, setIcon, MarkdownRenderer } from 'obsidian';
 import type TraceMindPlugin from '../main';
-import { AnalysisResult, BlockSession, ChatMessage, EntityPreview, PanelMode, ParsedBlock } from '../entities/types';
+import { AnalysisResult, BlockSession, ChatMessage, EntityPreview, EntityType, PanelMode, ParsedBlock } from '../entities/types';
 import { BlockEditorView, VIEW_TYPE_BLOCK_EDITOR } from './block-editor';
 import { CardType, MaturityLevel } from '../core/context-card';
 import { parseChatResponse, type ChatAction } from '../ai/chat-action-parser';
@@ -2714,7 +2714,7 @@ export class AIAnalysisPanelView extends ItemView {
 		if (typeof aliasesValue === 'string') {
 			aliases.push(...aliasesValue.split(/[,，、]/).map((a: string) => a.trim()).filter(Boolean));
 		} else if (Array.isArray(aliasesValue)) {
-			aliases.push(...aliasesValue.map(String));
+			aliases.push(...(aliasesValue as unknown[]).map(String));
 		}
 
 		const entityManager = this.plugin.getEntityManager();

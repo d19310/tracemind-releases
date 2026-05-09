@@ -43,7 +43,11 @@
 | done | UX Fix 2：Settings Provider 编辑能力 | Claude Code | Codex 已验收；已有 provider 可编辑保存，空必填字段保存已阻止 |
 | done | Provider Fix 4：接入 enableThinking / reasoningEffort 到真实请求体 | Claude Code | Codex 已验收；request body、streaming、Settings 测试连接和 LLM extraction 透传均完成 |
 | done | Calendar UX Fix 1：日历交互反馈、可访问性和渲染性能小修 | Claude Code | Codex 已验收；日期 title/aria/键盘触发、导航提示、批量日记状态和 helper 测试均完成 |
-| handoff | Release Prep Audit 1：版本整理与发布准备审计修复 | Claude Code | HANDOFF 已更新；只做版本/安装/release artifact/ignore/报告整理，不改功能逻辑 |
+| closed | Release Prep Audit 1：版本整理与发布准备审计修复 | Claude Code | 已被后续实际发布和 Release / Workspace Hygiene 1 覆盖；不再作为当前 handoff |
+| done | Entity Index Persistence 1：实体索引持久化到 Vault | Claude Code | Codex 已验收；首次启动边界、增量 persist、存储 roundtrip 和验证基线通过 |
+| done | Typecheck Fix 1：清理旧迁移遗留类型错误 | Claude Code | Codex 已验收；旧实体分类引用已清理，`tsc --noEmit` 纳入绿色基线 |
+| done | Release / Workspace Hygiene 1：发布后状态与工作区归档审计 | Claude Code | Codex 已验收；版本/artifact/status/仓库边界已报告，验证基线全绿 |
+| done | Vault Structure Startup Check 1：启动时校验 Vault 业务结构 | Claude Code | Codex 已验收；结构完整静默启动，缺失/异常时弹窗确认修正，启动成功 Notice 和重复 skip Notice 已移除 |
 
 ## 推荐修复顺序
 
@@ -115,7 +119,17 @@ rtk git diff --check
 | 2026-05-07 | Calendar UX Fix 1 验收通过 | 日期格 title/aria/键盘触发、导航提示、批量 diary date state 和 helper 测试已完成；根 class/style 已对齐 | Codex review |
 | 2026-05-07 | Release Prep Audit 1 进入交接 | 当前版本号一致且 lint/test/build 通过，但 install fallback 仍有旧 `1.4.2`，ignore 规则未覆盖本地产物，release artifact/版本一致性需要测试固化 | Codex |
 | 2026-05-07 | 发布仓库边界确认 | 私有 `github.com/d19310/TraceMind` 可放源码和构建产物；公开 `github.com/d19310/tracemind-releases` 只放构建产物供用户下载 | 用户决策 |
+| 2026-05-08 | Entity Index Persistence 1 进入交接 | 用户发现当前实体索引只存在内存，未写入 Vault 的 `TraceMind/index/`；本轮补持久化文件和所有增量更新保存点 | 用户消息 + Codex |
+| 2026-05-08 | Entity Index Persistence 1 验收通过 | 索引已保存到 `TraceMind/index/entity-index.json`；首次启动向导前不再持久化；`persistEntityIndex()` 已作为公开保存入口；lint、定向测试、全量测试、build、diff check 通过 | Codex review |
+| 2026-05-08 | Typecheck Fix 1 进入交接 | `tsc --noEmit` 仍被旧迁移实体类型阻塞；为谨慎起见独立开任务卡，只清理旧分类引用并补纯函数测试 | 用户消息 + Codex |
+| 2026-05-08 | Typecheck Fix 1 验收通过 | `analysis-panel` 和 `confirmation-dialog` 已改为当前 `people/objects/dimensions` 与 `person/object/theme` 模型；category 不再被 cast 成实体；`tsc`、lint、定向测试、全量测试、build、diff check 均通过 | Codex review |
+| 2026-05-08 | Release / Workspace Hygiene 1 进入交接 | 多轮开发和一次实际发布后，工作区积累大量变更；先做版本、artifact、git status 和仓库边界审计，避免继续功能开发前混淆提交/发布范围 | Codex |
+| 2026-05-08 | Release / Workspace Hygiene 1 验收通过 | 版本文件均为 `1.5.1`，release artifact 边界已列清，git status 已分组；`tsc`、lint、全量测试、build、diff check 均通过 | Codex review |
+| 2026-05-09 | Vault Structure Startup Check 1 进入交接 | 用户要求每次启动插件校验 Vault 文件目录；结构完整静默启动，缺失或变更时提示用户并经确认后修正 | 用户消息 + Codex |
+| 2026-05-09 | Vault Structure Startup Check 1 验收通过 | 非首次启动先校验 Vault 结构；完整时静默初始化，缺失/异常时弹窗确认修正；启动成功 Notice 和重复 skip Notice 已移除，验证基线通过 | Codex review |
 
 ## 开放问题
 
-- 下一步先完成 Release Prep Audit 1；之后再处理 local agent 稳定化或正式发布打包。
+- Entity Index 的 `AnalysisOrchestrator` 内部索引副本是否需要独立持久化，后续结合实际调用路径再定。
+- `tracemind-exploration-design/` 是否纳入私有仓库仍需用户决定；不要进入公开 release 仓库。
+- 下一步可提交当前 1.5.1 基线，或继续处理 local agent 稳定化。

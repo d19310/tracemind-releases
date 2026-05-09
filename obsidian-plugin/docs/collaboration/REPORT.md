@@ -1,4 +1,4 @@
-# Claude Code Release Prep Audit 1 报告
+# Claude Code Vault Structure Startup Check 1 报告
 
 ## 状态
 
@@ -8,78 +8,42 @@
 
 | 文件 | 改动 |
 |------|------|
-| `install.sh` | 版本 fallback 改为 `DEFAULT_VERSION="v1.4.3"` + env var 支持 |
-| `.gitignore` | 新增 `.DS_Store`、`TraceMindVault/` |
-| `CHANGELOG.md` | 补充 release 准备条目 |
-| `tests/release-prep.test.ts` | 新增 8 个版本/artifact 检查测试 |
+| `src/core/first-start-constants.ts` | 新增 `VaultStructureIssue`/`VaultStructureAccess`/`getVaultStructureIssues()`/`decideStartupAction()` |
+| `src/core/first-start.ts` | 新增 `showVaultStructureRepairModal()` + `VaultRepairModal` 类 |
+| `src/main.ts` | `TRACEMIND_DIRS = REQUIRED_DIRS`；非首次启动改为 `checkVaultStructureThenContinue()` |
+| `tests/core/vault-structure.test.ts` | 新增 9 个测试 |
 | `docs/collaboration/REPORT.md` | 本报告 |
 
-## 版本一致性检查
+## 启动分支
 
-```
-package.json.version          = 1.4.3
-manifest.json.version         = 1.4.3
-package-lock.json.version     = 1.4.3
-package-lock.packages[""].ver = 1.4.3
-manifest.json.id              = tracemind
-manifest.json.js              = main.js
-```
+| 场景 | 行为 |
+|------|------|
+| 首次启动（无 PROFILE.md） | 现有首次启动向导（不变） |
+| 非首次 + 结构完整 | 静默继续，不弹窗，不 Notice |
+| 非首次 + 缺失目录/PROFILE | 弹窗提示，用户确认修正 |
+| 用户点"修正" | 创建缺失目录/档案，重新校验，成功 → 初始化 index |
+| 用户点"暂不修正" | 不创建，Notice 提示，继续加载 |
 
-✅ 全部一致。
+## 可/不可自动修复
 
-## Release Artifact 检查
+| 类型 | repairable | 处理 |
+|------|-----------|------|
+| 目录缺失 | true | 创建目录 |
+| PROFILE.md 缺失 | true | 创建默认 profile |
+| 目录路径为文件 | false | 弹窗提示需手动处理 |
+| PROFILE.md 路径为目录 | false | 弹窗提示需手动处理 |
 
-| Artifact | Status |
-|----------|--------|
-| `main.js` | 264KB, exists |
-| `manifest.json` | exists, valid JSON |
-| `styles.css` | 不存在（可选 artifact） |
+## 测试 (24 pass)
 
-## install.sh 版本逻辑
-
-优先级：`TRACEMIND_VERSION` env var → 本地 `manifest.json` → `DEFAULT_VERSION="v1.4.3"`
-
-## .gitignore 更新
-
-- **根目录** `../.gitignore`（新增）：`.DS_Store`、`obsidian-plugin/TraceMindVault/`
-- **插件目录** `.gitignore`：新增 `.DS_Store`、`TraceMindVault/`
-
-## Git Status 分组
-
-### 功能主线修改（需保留）
-源码/测试/配置：`src/` (40+ files), `tests/` (25+ files), `esbuild.config.mjs`, `package.json`, `package-lock.json`, `install.sh`, `main.js`, `manifest.json`, `.gitignore`
-
-### 协作文档
-`docs/collaboration/`, `AGENTS.md`, `SKILL.md`, `docs/install-windows.md`
-
-### 需用户决定
-- `scripts/migrate-theme-subtypes.sh` — 一次性迁移脚本
-- `tracemind-exploration-design/` — 项目外探索文档
-
-### 已 ignore
-`.DS_Store`, `TraceMindVault/`
-
-## 两个仓库职责
-
-| | `d19310/TraceMind` (私有) | `d19310/tracemind-releases` (公开) |
-|---|---|---|
-| 源码/测试/协作文档 | ✅ | ❌ |
-| `main.js` | ✅ | ✅ |
-| `manifest.json` | ✅ | ✅ |
-| `styles.css` | 可选 | 可选（存在则发布） |
-| 公开 release 下载源 | — | `install.sh` 指向此处 |
+- `getVaultStructureIssues`: 完整结构、缺失目录、缺失 PROFILE、wrong_type(dir)、wrong_type(profile)、额外文件不报错
+- `decideStartupAction`: first_start / continue / prompt_repair
 
 ## 验证
 
 ```bash
-rtk npm run lint  # 0/0
-rtk proxy npx tsx --test tests/release-prep.test.ts  # 8/8
-rtk npm test      # all pass
-rtk npm run build # OK
+rtk proxy npx tsc --noEmit   # exit 0
+rtk npm run lint              # 0/0
+rtk proxy npx tsx --test tests/core/first-start.test.ts tests/core/vault-structure.test.ts  # 24/24
+rtk npm test                  # all pass
+rtk npm run build             # OK
 ```
-
-## 未处理
-
-- `tracemind-exploration-design/` — 需用户决定
-- `scripts/migrate-theme-subtypes.sh` — 是否纳入仓库
-- `isDesktopOnly: false` + `child_process` 本地 agent — 风险记录，不改

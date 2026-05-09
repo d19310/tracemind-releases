@@ -1817,7 +1817,7 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Confirm and delete block
 	 */
-	private async confirmAndDeleteBlock(blockId: string, parentId: string | null, isChild: boolean, _deleteSession: boolean) { void _deleteSession;
+	private async confirmAndDeleteBlock(blockId: string, parentId: string | null, isChild: boolean, deleteSession: boolean) {
 		let message: string;
 		let childCount = 0;
 

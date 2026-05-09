@@ -19,12 +19,14 @@ import { cardToMarkdown, parseCardMarkdown } from './storage/markdown-card';
 import { AnalysisService } from './ai/analysis-service';
 import type { AnalyzedEntity } from './ai/analysis-service';
 import { buildIndexFromFiles, cardToIndexEntry } from './storage/entity-index-io';
+import { saveEntityIndex, loadEntityIndex } from './storage/entity-index-store';
 import { EntityIndex, searchByName, searchByType, upsertEntry, IndexEntry } from './storage/entity-index';
 import { sessionFilePath, formatSessionJson, parseSessionJson } from './storage/session-store-io';
 import { saveSession, loadSession, ChatMessage } from './storage/session-store';
 import type { BlockSession, ChatSession } from './entities/types';
 import { AnalysisPhase } from './entities/types';
-import { isFirstStart, showFirstStartWizard } from './core/first-start';
+import { isFirstStart, showFirstStartWizard, showVaultStructureRepairModal, REQUIRED_DIRS, PROFILE_PATH } from './core/first-start';
+import { getVaultStructureIssues, type VaultStructureIssue } from './core/first-start-constants';
 import { loadEntityTypeConfig } from './ai/entity-type-config';
 import { insightFilePath, parseInsightMarkdown } from './storage/insight-store';
 import type { InsightReport } from './storage/insight-store';
@@ -37,15 +39,7 @@ import { parseDiaryContent } from './core/diary-parser';
 /**
  * Directory structure for TraceMind vault
  */
-const TRACEMIND_DIRS = [
-  'Daily',
-  'Person',
-  'Object',
-  'Theme',
-  'TraceMind/sessions',
-  'TraceMind/index',
-  'TraceMind/insights',
-];
+const TRACEMIND_DIRS = REQUIRED_DIRS;
 
 export class TraceMindPlugin extends Plugin {
   settings!: TraceMindSettings;
@@ -72,7 +66,6 @@ export class TraceMindPlugin extends Plugin {
 
     try {
       await this.loadSettings();
-      await this.rebuildEntityIndex();
       this.userProfile = await loadProfile(this.app);
 
       // Load entity type config
@@ -143,17 +136,17 @@ export class TraceMindPlugin extends Plugin {
         }),
       );
 
-      new Notice('TraceMind 已加载');
       console.log('TraceMind: loaded successfully');
 
       // First start: show wizard (which creates and validates dirs on completion)
       if (await isFirstStart(this.app.vault.adapter)) {
         showFirstStartWizard(this.app, async () => {
           await this.ensureVaultStructure();
+          await this.rebuildEntityIndex();
         });
       } else {
-        // Non-first-start: ensure structure silently (repair missing dirs)
-        await this.ensureVaultStructure();
+        // Non-first-start: check structure, prompt repair if incomplete
+        await this.checkVaultStructureThenContinue();
       }
     } catch (e) {
       console.error('TraceMind: Failed to load', e);
@@ -227,7 +220,24 @@ export class TraceMindPlugin extends Plugin {
    * Rebuild entity index from all Context Card markdown files in vault.
    * Called on startup and after entity creation/updates.
    */
-  private async rebuildEntityIndex(): Promise<void> {
+  /**
+   * Initialize entity index on plugin load.
+   * Non-first-start: try loading persisted index; fall back to rebuild from cards.
+   * First-start: keep empty until wizard completes.
+   */
+  private async initializeEntityIndex(): Promise<void> {
+    // Try loading persisted index first
+    const persisted = await loadEntityIndex(this.app);
+    if (persisted && persisted.entries.length > 0) {
+      this.entityIndex = persisted;
+      console.log(`TraceMind: loaded entity index with ${persisted.entries.length} entries from file`);
+      return;
+    }
+    // Fall back to rebuilding from cards
+    await this.rebuildEntityIndex({ persist: true });
+  }
+
+  private async rebuildEntityIndex(options: { persist?: boolean } = { persist: true }): Promise<void> {
     const cardDirs = ['Person', 'Object', 'Theme'];
     const files: { path: string; content: string }[] = [];
 
@@ -247,6 +257,102 @@ export class TraceMindPlugin extends Plugin {
 
     this.entityIndex = buildIndexFromFiles(files);
     console.log(`TraceMind: entity index rebuilt with ${this.entityIndex.entries.length} entries`);
+
+    if (options.persist) {
+      await this.persistEntityIndex();
+    }
+  }
+
+  private async checkVaultStructureThenContinue(): Promise<void> {
+    const issues = getVaultStructureIssues({
+      getType: (path: string) => {
+        const f = this.app.vault.getAbstractFileByPath(path);
+        if (!f) return null;
+        // TFolder has 'children', TFile has 'extension'
+        return (f as any).children !== undefined ? 'folder' : 'file';
+      },
+    });
+
+    if (issues.length === 0) {
+      // Structure complete — silent continue
+      await this.initializeEntityIndex();
+      return;
+    }
+
+    return new Promise<void>((resolve) => {
+      showVaultStructureRepairModal(
+        this.app, issues,
+        // onRepair: fix repairable items, return remaining issues
+        async (): Promise<VaultStructureIssue[]> => {
+          for (const issue of issues) {
+            if (!issue.repairable) continue;
+            if (issue.type === 'missing_dir') {
+              await ensureFolder(this.app, issue.path);
+            } else if (issue.type === 'missing_file' && issue.path === PROFILE_PATH) {
+              const existing = this.app.vault.getAbstractFileByPath(PROFILE_PATH);
+              if (!existing) {
+                await this.app.vault.create(PROFILE_PATH, `---
+name: ""
+occupation: ""
+company: ""
+city: ""
+skills: []
+roles: []
+relationships: []
+goals: []
+focusAreas: []
+---
+
+# 用户档案
+
+## 基本信息
+- 姓名：
+- 公司/组织：
+- 职位/职业：
+- 城市：
+
+## 技能与专业
+- _暂无_
+
+## 角色与关系
+- _暂无_
+
+## 目标与计划
+- _暂无_
+
+## 关注领域
+- _暂无_
+`);
+              }
+            }
+          }
+          // Re-check
+          return getVaultStructureIssues({
+            getType: (path: string) => {
+              const f = this.app.vault.getAbstractFileByPath(path);
+              if (!f) return null;
+              return (f as any).children !== undefined ? 'folder' : 'file';
+            },
+          });
+        },
+        // onSkip — modal already shows the notice
+        () => { resolve(); },
+        // onComplete
+        async () => {
+          await this.initializeEntityIndex();
+          resolve();
+        },
+      );
+    });
+  }
+
+  async persistEntityIndex(): Promise<void> {
+    try {
+      await saveEntityIndex(this.app, this.entityIndex);
+    } catch (e) {
+      console.error('TraceMind: failed to persist entity index', e);
+      new Notice('实体索引保存失败: ' + (e as Error).message);
+    }
   }
 
   /**
@@ -702,15 +808,17 @@ class EntityManagerAdapter {
       const existingContent = await this.app.vault.read(existing);
       const existingEntry = cardToIndexEntry(existingContent, path);
       this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, existingEntry);
+      await this.plugin.persistEntityIndex();
       return { ...entity, id: existingEntry.id };
     }
 
     const md = cardToMarkdown(card);
     await this.app.vault.create(path, md);
 
-    // Update in-memory index
+    // Update in-memory index and persist
     const entry = cardToIndexEntry(md, path);
     this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, entry);
+    await this.plugin.persistEntityIndex();
 
     return { ...entity, id: entry.id };
   }
@@ -748,6 +856,7 @@ class EntityManagerAdapter {
     // Update index
     const updatedEntry = cardToIndexEntry(md, entry.filePath);
     this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
+    await this.plugin.persistEntityIndex();
   }
 
   /**
@@ -825,6 +934,7 @@ class EntityManagerAdapter {
       await this.app.vault.modify(file, md);
       const updatedEntry = cardToIndexEntry(md, entry.filePath);
       this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
+      await this.plugin.persistEntityIndex();
     }
   }
 
@@ -853,6 +963,7 @@ class EntityManagerAdapter {
     // Update index
     const updatedEntry = cardToIndexEntry(md, entry.filePath);
     this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
+    await this.plugin.persistEntityIndex();
   }
 
   /**
@@ -892,6 +1003,8 @@ class EntityManagerAdapter {
       const updatedEntry = cardToIndexEntry(md, entry.filePath);
       this.plugin.entityIndex = upsertEntry(this.plugin.entityIndex, updatedEntry);
     }
+
+    await this.plugin.persistEntityIndex();
   }
 
   async enrichEntity(id: string, updates: any): Promise<any> {
