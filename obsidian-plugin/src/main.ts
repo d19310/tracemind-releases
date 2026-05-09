@@ -145,9 +145,13 @@ export class TraceMindPlugin extends Plugin {
           await this.rebuildEntityIndex();
         });
       } else {
-        // Non-first-start: check structure, prompt repair if incomplete
-        await this.checkVaultStructureThenContinue();
+        // Non-first-start: ensure structure silently, then init index
+        await this.ensureVaultStructure();
+        await this.initializeEntityIndex();
       }
+
+      // Async: validate structure after loading, prompt repair if needed
+      this.scheduleVaultStructureCheck();
     } catch (e) {
       console.error('TraceMind: Failed to load', e);
       new Notice('TraceMind 加载失败: ' + (e as Error).message);
@@ -263,34 +267,31 @@ export class TraceMindPlugin extends Plugin {
     }
   }
 
-  private async checkVaultStructureThenContinue(): Promise<void> {
-    const issues = getVaultStructureIssues({
-      getType: (path: string) => {
-        const f = this.app.vault.getAbstractFileByPath(path);
-        if (!f) return null;
-        // TFolder has 'children', TFile has 'extension'
-        return (f as any).children !== undefined ? 'folder' : 'file';
-      },
-    });
+  /**
+   * Schedule an async vault structure check after plugin has finished loading.
+   * Runs non-blockingly — shows a repair modal if issues are found.
+   */
+  private scheduleVaultStructureCheck(): void {
+    setTimeout(() => {
+      const issues = getVaultStructureIssues({
+        getType: (path: string) => {
+          const f = this.app.vault.getAbstractFileByPath(path);
+          if (!f) return null;
+          return (f as any).children !== undefined ? 'folder' : 'file';
+        },
+      });
 
-    if (issues.length === 0) {
-      // Structure complete — silent continue
-      await this.initializeEntityIndex();
-      return;
-    }
+      if (issues.length === 0) return; // silent
 
-    return new Promise<void>((resolve) => {
       showVaultStructureRepairModal(
         this.app, issues,
-        // onRepair: fix repairable items, return remaining issues
         async (): Promise<VaultStructureIssue[]> => {
           for (const issue of issues) {
             if (!issue.repairable) continue;
             if (issue.type === 'missing_dir') {
               await ensureFolder(this.app, issue.path);
             } else if (issue.type === 'missing_file' && issue.path === PROFILE_PATH) {
-              const existing = this.app.vault.getAbstractFileByPath(PROFILE_PATH);
-              if (!existing) {
+              if (!this.app.vault.getAbstractFileByPath(PROFILE_PATH)) {
                 await this.app.vault.create(PROFILE_PATH, `---
 name: ""
 occupation: ""
@@ -326,7 +327,6 @@ focusAreas: []
               }
             }
           }
-          // Re-check
           return getVaultStructureIssues({
             getType: (path: string) => {
               const f = this.app.vault.getAbstractFileByPath(path);
@@ -335,15 +335,10 @@ focusAreas: []
             },
           });
         },
-        // onSkip — modal already shows the notice
-        () => { resolve(); },
-        // onComplete
-        async () => {
-          await this.initializeEntityIndex();
-          resolve();
-        },
+        () => { /* skip */ },
+        async () => { /* structure repaired */ },
       );
-    });
+    }, 2000);
   }
 
   async persistEntityIndex(): Promise<void> {
