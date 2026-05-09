@@ -5,6 +5,11 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.5] - 2026-05-09
+
+### Fixed
+- **微信公众号剪藏 CORS** — OpenCLI 失败后不再 fallback 到 Obsidian renderer fetch，避免 `app://obsidian.md` 跨域错误；失败时保留原链接。
+
 ## [1.5.4] - 2026-05-09
 
 ### Added

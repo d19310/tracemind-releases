@@ -102,3 +102,25 @@ describe('replaceUrlWithEmbed', () => {
     assert.equal(replaceUrlWithEmbed('hello', 'https://x.com', '![[x]]'), 'hello');
   });
 });
+
+describe('clipWebpage WeChat handling', () => {
+  const { clipWebpage } = require('../../src/utils/web-clipper');
+
+  it('does not browser-fetch WeChat articles because Obsidian renderer hits CORS', async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCalled = false;
+    (globalThis as any).fetch = async () => {
+      fetchCalled = true;
+      throw new Error('should not fetch');
+    };
+
+    try {
+      const result = await clipWebpage('https://mp.weixin.qq.com/s/TOpMo4OTHuhn7q2bbQqyUw');
+      assert.equal(fetchCalled, false);
+      assert.ok(result.error.includes('OpenCLI'));
+      assert.equal(result.content, '');
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
+  });
+});

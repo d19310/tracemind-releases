@@ -4,7 +4,7 @@
  *
  * Supports:
  * - Generic websites using Readability-style extraction
- * - WeChat articles (mp.weixin.qq.com)
+ * - WeChat articles are handled by OpenCLI before this helper is called
  *
  * Uses browser's native DOM APIs for HTML parsing (works in Obsidian/Electron)
  * Uses Turndown for HTML to Markdown conversion
@@ -136,9 +136,9 @@ export async function clipWebpage(url: string): Promise<ClipResult> {
 			return result;
 		}
 
-		// Dispatch to appropriate clipper
 		if (isWechatURL(url)) {
-			return await clipWechatArticle(url);
+			result.error = 'WeChat articles must be clipped via OpenCLI to avoid Obsidian renderer CORS restrictions';
+			return result;
 		}
 		return await clipGenericWebpage(url);
 	} catch (error) {
