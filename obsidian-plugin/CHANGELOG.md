@@ -5,6 +5,16 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.6] - 2026-05-09
+
+### Added
+- **网页剪藏** — 日记中网页链接可确认后抓取保存到 `Daily/webclippings`，微信优先 OpenCLI
+- **剪藏图片** — 微信文章图片随文章一起保存到 `Daily/webclippings/images/`
+- **URL 提取修复** — 不再把中文标点/文字连带识别为 URL 的一部分
+
+### Fixed
+- **微信剪藏 CORS** — OpenCLI 路径修复（Electron PATH 不含 homebrew）+ 子目录递归查找 + 图片复制
+
 ## [1.5.5] - 2026-05-09
 
 ### Fixed

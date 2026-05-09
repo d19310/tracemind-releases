@@ -16,6 +16,8 @@ import { ensureParentFolder } from '../vault/vault';
 import { sanitizeAttachmentFileName, makeUniqueAttachmentPath, attachmentEmbed, insertAtCursorValue } from '../storage/diary-attachments';
 import { extractURLs, isWechatURL, clipWebpage } from '../utils/web-clipper';
 import { clipWechatWithOpenCliToTemp } from '../utils/opencli-web-clipper';
+import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { clippingFromClipResult, formatWebClippingMarkdown, makeUniqueWebClippingPath, buildWebClippingFileName, webClippingEmbed, replaceUrlWithEmbed } from '../storage/web-clippings';
 import { extractWebClippingEmbedPaths, summarizeWebClippingMarkdown, buildWebClippingContext } from '../storage/web-clipping-context';
 
@@ -2510,7 +2512,10 @@ export class BlockEditorView extends ItemView {
 		} else if (failCount > 0 && successCount > 0) {
 			new Notice(`部分网页剪藏失败 (${successCount} 成功 / ${failCount} 失败)，已保留原链接`);
 		} else if (failCount > 0 && successCount === 0) {
-			new Notice('网页剪藏失败，已保留原链接');
+			const hasWechat = urls.some(u => isWechatURL(u));
+			new Notice(hasWechat
+				? '微信文章剪藏需要安装 OpenCLI，已保留原链接'
+				: '网页剪藏失败，已保留原链接');
 		}
 
 		return result;
@@ -2525,21 +2530,38 @@ export class BlockEditorView extends ItemView {
 			let source: 'opencli-weixin' | 'web-clipper' = 'web-clipper';
 
 			if (isWechatURL(url)) {
-				// Try OpenCLI first
+				// WeChat: OpenCLI only (renderer fetch blocked by CORS)
 				const ocResult = await clipWechatWithOpenCliToTemp(url);
+				console.log('[TraceMind] OpenCLI result:', ocResult.ok, ocResult.error || '');
 				if (ocResult.ok && ocResult.markdown) {
 					clipResult = { title: ocResult.title || '', content: ocResult.markdown, url };
 					source = 'opencli-weixin';
+					// Copy downloaded images to vault if present
+					if (ocResult.baseDir) {
+						const imagesDir = join(ocResult.baseDir, 'images');
+						if (existsSync(imagesDir)) {
+							for (const f of readdirSync(imagesDir)) {
+								const imgPath = join(imagesDir, f);
+								const vaultImgPath = `Daily/webclippings/images/${f}`;
+								await ensureParentFolder(this.app, vaultImgPath);
+								if (!this.app.vault.getAbstractFileByPath(vaultImgPath)) {
+									const buf = readFileSync(imgPath);
+									await this.app.vault.createBinary(vaultImgPath, buf);
+								}
+							}
+						}
+					}
+				}
+				// No fallback — WeChat blocks cross-origin fetch from Obsidian renderer
+			} else {
+				const webClip = await clipWebpage(url);
+				if (!webClip.error && webClip.content) {
+					clipResult = webClip;
+					source = 'web-clipper';
 				}
 			}
 
-			// Fallback to web-clipper
-			if (!clipResult) {
-				const webClip = await clipWebpage(url);
-				if (webClip.error || !webClip.content) return null;
-				clipResult = webClip;
-				source = 'web-clipper';
-			}
+			if (!clipResult) return null;
 
 			const doc = clippingFromClipResult(clipResult, source, clippedAt);
 			const fileName = buildWebClippingFileName({ title: doc.title, url, date: today });
@@ -2556,7 +2578,8 @@ export class BlockEditorView extends ItemView {
 			}
 
 			return { path, title: doc.title };
-		} catch {
+		} catch (e) {
+			console.error('[TraceMind] clipUrlToWebClipping failed:', e);
 			return null;
 		}
 	}

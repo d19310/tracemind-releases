@@ -64,7 +64,9 @@ export function makeUniqueWebClippingPath(
 }
 
 export function webClippingEmbed(path: string): string {
-  return `![[${path}]]`;
+  // Wikilink (not embed) — keeps block compact
+  const name = path.split('/').pop() || path;
+  return `[[${path}|${name}]]`;
 }
 
 function escapeYamlValue(v: string): string {

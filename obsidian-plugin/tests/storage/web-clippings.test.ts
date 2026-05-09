@@ -51,8 +51,8 @@ describe('makeUniqueWebClippingPath', () => {
 });
 
 describe('webClippingEmbed', () => {
-  it('wraps in embed syntax', () => {
-    assert.equal(webClippingEmbed('Daily/webclippings/x.md'), '![[Daily/webclippings/x.md]]');
+  it('wraps in wikilink with filename alias', () => {
+    assert.equal(webClippingEmbed('Daily/webclippings/x.md'), '[[Daily/webclippings/x.md|x.md]]');
   });
 });
 
