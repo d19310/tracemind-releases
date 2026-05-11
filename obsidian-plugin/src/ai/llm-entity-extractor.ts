@@ -87,11 +87,7 @@ export function buildExtractionPrompt(diaryText: string, profileContext?: string
 ${buildExtractionTypeGuide()}`;
 
   if (profileContext) {
-    const isKnownEntities = profileContext.includes('已知实体');
     prompt += '\n\n' + profileContext;
-    if (isKnownEntities) {
-      prompt += '\n\n注意：已知实体已建档，不要重复提取，只提取新出现的实体。';
-    }
   }
 
   prompt += `\n\n## 输出格式

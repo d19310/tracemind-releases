@@ -167,12 +167,12 @@ export function scanDiaryForKnownEntities(
       }
     }
 
-    // Layer 3: Prefix match (first 2+ chars of Chinese names)
-    if (entry.name.length >= 2) {
-      const prefix = entry.name.slice(0, Math.min(3, entry.name.length));
-      // Only add prefix if it's not already covered by exact or aliases
+    // Layer 3: Prefix match (first 4 chars, >=4 char entities only)
+    // e.g. "字节跳动910C" matches "字节910C项目" but "上海电力" does not match "上海电信"
+    if (entry.name.length >= 4) {
+      const prefix = entry.name.slice(0, 4);
       const existing = patterns.filter(p => p.entityId === entry.id && p.text === prefix);
-      if (existing.length === 0 && prefix.length >= 2) {
+      if (existing.length === 0) {
         patterns.push({
           text: prefix,
           entityName: entry.name,

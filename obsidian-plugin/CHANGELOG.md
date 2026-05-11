@@ -5,6 +5,12 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.10] - 2026-05-11
+
+### Fixed
+- **实体误匹配** — AC prefix 3字→4字，substring 2字→4字，消除"上海电力"误判"上海电信"
+- **实体模糊匹配** — `findExistingEntity` 增加 4 字子串 fallback，`"字节跳动910C项目"` 可匹配 `"字节910C项目"`
+
 ## [1.5.9] - 2026-05-11
 
 ### Fixed

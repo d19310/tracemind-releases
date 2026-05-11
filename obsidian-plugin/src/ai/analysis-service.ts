@@ -154,9 +154,24 @@ function findExistingEntity(
   entity: ExtractedEntity,
   existingCards: Map<string, { name: string; cardType: CardType; maturity: string }>,
 ): { cardId: string; maturity: string } | null {
+  // Exact match
   for (const [id, card] of existingCards) {
     if (card.name === entity.name) {
       return { cardId: id, maturity: card.maturity };
+    }
+  }
+  // Fuzzy fallback: 4-char substring overlap (e.g. "字节跳动910C项目" vs "字节910C项目")
+  for (const [id, card] of existingCards) {
+    if (card.name.length < 4 || entity.name.length < 4) continue;
+    for (let i = 0; i <= card.name.length - 4; i++) {
+      if (entity.name.includes(card.name.slice(i, i + 4))) {
+        return { cardId: id, maturity: card.maturity };
+      }
+    }
+    for (let i = 0; i <= entity.name.length - 4; i++) {
+      if (card.name.includes(entity.name.slice(i, i + 4))) {
+        return { cardId: id, maturity: card.maturity };
+      }
     }
   }
   return null;
@@ -206,35 +221,44 @@ export class AnalysisService {
       : [];
     // AC pre-scan result available in acMatches for downstream use
 
-    // Build candidate list for LLM: AC exact matches + entities with string overlap in diary
-    const acKnownSet = new Set(acMatches.map(m => m.entityId));
-    const candidates = entityIndexEntries && entityIndexEntries.length > 0
-      ? entityIndexEntries.filter(e => {
-          if (acKnownSet.has(e.id)) return true; // AC matched
-          // Simple fuzzy: any 2+ char substring of entity name appears in diary
-          for (let i = 0; i <= e.name.length - 2; i++) {
-            if (diaryText.includes(e.name.slice(i, i + 2))) return true;
-          }
-          // Also check aliases
-          for (const alias of e.aliases || []) {
-            for (let i = 0; i <= alias.length - 2; i++) {
-              if (diaryText.includes(alias.slice(i, i + 2))) return true;
-            }
-          }
-          return false;
-        }).slice(0, 10) // cap at 10 candidates to keep prompt lean
-      : [];
+    // Build candidate lists for LLM — exact + 4-char fuzzy (discriminating enough
+    // to distinguish "字节910C项目" vs "字节跳动910C项目" from false positives like
+    // "上海电力公司" vs "上海电信")
+    const acExactMatches = acMatches.filter(m => m.matchType === 'exact' || m.matchType === 'alias');
+    const acExactSet = new Set(acExactMatches.map(m => m.entityId));
+    const acFuzzySet = new Set(acMatches.filter(m => m.matchType === 'prefix').map(m => m.entityId));
 
-    const candidateInfo = candidates.length > 0
-      ? candidates.map(e => {
-          const aliasesStr = e.aliases && e.aliases.length > 0
-            ? '\uFF08\u522B\u540D\uFF1A' + e.aliases.join('\u3001') + '\uFF09'
-            : '';
-          return e.name + aliasesStr + ' [' + e.cardType + ']';
-        }).join('\u3001')
-      : '';
+    const exactCandidates: IndexEntry[] = [];
+    const fuzzyCandidates: IndexEntry[] = [];
+    const seen = new Set<string>();
 
-    console.log('[TraceMind] AC scan found', acMatches.length, 'matches,', candidates.length, 'candidates for LLM:', candidateInfo);
+    if (entityIndexEntries && entityIndexEntries.length > 0) {
+      for (const e of entityIndexEntries) {
+        if (seen.has(e.id)) continue;
+        if (acExactSet.has(e.id)) { seen.add(e.id); exactCandidates.push(e); continue; }
+        if (acFuzzySet.has(e.id)) { seen.add(e.id); fuzzyCandidates.push(e); continue; }
+        // 4-char substring overlap — discriminating enough for Chinese entity names
+        let isFuzzy = false;
+        for (let i = 0; i <= e.name.length - 4 && !isFuzzy; i++) {
+          if (diaryText.includes(e.name.slice(i, i + 4))) isFuzzy = true;
+        }
+        for (const alias of e.aliases || []) {
+          for (let i = 0; i <= alias.length - 4 && !isFuzzy; i++) {
+            if (diaryText.includes(alias.slice(i, i + 4))) isFuzzy = true;
+          }
+        }
+        if (isFuzzy) { seen.add(e.id); fuzzyCandidates.push(e); }
+      }
+    }
+
+    const exactList = exactCandidates.slice(0, 10).map(e => e.name + ' [' + e.cardType + ']').join('\u3001');
+    const fuzzyList = fuzzyCandidates.slice(0, 10).map(e => e.name + ' [' + e.cardType + ']').join('\u3001');
+
+    let candidateInfo = '';
+    if (exactList) candidateInfo += '\n\n已建档实体（不要重复提取）：' + exactList;
+    if (fuzzyList) candidateInfo += '\n\n可能已建档（名称部分匹配，请根据日记上下文确认）：' + fuzzyList;
+
+    console.log('[TraceMind] AC scan found', acMatches.length, 'matches, exact:', exactCandidates.length, 'fuzzy:', fuzzyCandidates.length);
 
     let entities: ExtractedEntity[] = [];
     let domainCategory: string | undefined;
@@ -254,8 +278,8 @@ export class AnalysisService {
           ...llmConfig,
           extraContext,
           profileContext: llmConfig.profileContext
-            ? llmConfig.profileContext + (candidateInfo ? '\n\n已知实体（已建档，不要重复提取，注意相似名称）：' + candidateInfo : '')
-            : (candidateInfo ? '\n\n已知实体（已建档，不要重复提取，注意相似名称）：' + candidateInfo : ''),
+            ? llmConfig.profileContext + candidateInfo
+            : candidateInfo,
         };
         const output = await extractEntitiesWithLLM(diaryText, enhancedConfig);
         console.log('[TraceMind] LLM extracted:', output.entities.length, output.entities, 'domain:', output.domain);
