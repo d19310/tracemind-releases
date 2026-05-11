@@ -1845,10 +1845,40 @@ export class AIAnalysisPanelView extends ItemView {
 			}
 			this.replayingHistory = false;
 			this.showChatState();
+
+			// Restore clarification state from analysis result if present
+			this.restoreAnalysisState(session);
 			return;
 		}
 		// No history — start analysis flow
 		this.renderAnalysisStart(session);
+	}
+
+	/**
+	 * Restore clarification state from a session's analysis result.
+	 * Needed when reloading a session that was mid-clarification.
+	 */
+	private restoreAnalysisState(session: BlockSession) {
+		const result = session.analysisResult as any;
+		if (!result || !result.entities) return;
+
+		const allEntities = this.flattenEntityPreviews(result);
+		if (allEntities.length === 0) return;
+
+		const newEntities = allEntities.filter((e: any) => !e.isArchived);
+		const archivedEntities = allEntities.filter((e: any) => e.isArchived);
+
+		// Check if clarification was in progress: new entities still unarchived
+		if (newEntities.length === 0) {
+			this.clarificationPhase = 'complete';
+			return;
+		}
+
+		this.clarificationQueue = [...newEntities].sort((a: any, b: any) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0));
+		this.knownEntities = [...archivedEntities];
+		this.allSessionEntities = [...newEntities, ...archivedEntities];
+		this.currentEntityIndex = 0;
+		this.clarificationPhase = 'clarifying';
 	}
 
 	updateAnalysis(result: AnalysisResult) {

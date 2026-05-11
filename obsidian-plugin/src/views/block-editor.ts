@@ -14,12 +14,6 @@ import type TraceMindPlugin from '../main';
 import { loadTemplate } from '../utils/template-loader';
 import { ensureParentFolder } from '../vault/vault';
 import { sanitizeAttachmentFileName, makeUniqueAttachmentPath, attachmentEmbed, insertAtCursorValue } from '../storage/diary-attachments';
-import { extractURLs, isWechatURL, clipWebpage } from '../utils/web-clipper';
-import { clipWechatWithOpenCliToTemp } from '../utils/opencli-web-clipper';
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { clippingFromClipResult, formatWebClippingMarkdown, makeUniqueWebClippingPath, buildWebClippingFileName, webClippingEmbed, replaceUrlWithEmbed } from '../storage/web-clippings';
-import { extractWebClippingEmbedPaths, summarizeWebClippingMarkdown, buildWebClippingContext } from '../storage/web-clipping-context';
 
 export const VIEW_TYPE_BLOCK_EDITOR = 'tracemind-block-editor';
 
@@ -822,24 +816,34 @@ export class BlockEditorView extends ItemView {
 				min-width: 0;
 			}
 
+			.lifewiki-input-right-actions {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				flex-shrink: 0;
+			}
+
 			.lifewiki-attachment-btn {
 				width: 36px;
 				height: 36px;
 				border-radius: 50%;
-				border: none;
-				background: transparent;
+				border: none !important;
+				background: transparent !important;
+				box-shadow: none !important;
 				color: var(--text-muted);
 				display: flex;
 				align-items: center;
 				justify-content: center;
 				cursor: pointer;
-				font-size: 22px;
-				line-height: 1;
+				font-size: 24px;
+				font-weight: 300;
+				line-height: 0;
+				padding: 0 0 2px 0;
 				flex-shrink: 0;
 			}
 
 			.lifewiki-attachment-btn:hover {
-				background: var(--background-modifier-hover);
+				background: var(--surface-container-lowest) !important;
 				color: var(--text-normal);
 			}
 
@@ -1173,8 +1177,13 @@ export class BlockEditorView extends ItemView {
 			text: 'Enter 发送'
 		});
 
+		// Right group: append actions + send button
+		const rightGroup = inputBottomEl.createEl('div', {
+			cls: 'lifewiki-input-right-actions',
+		});
+
 		// Append mode actions (hidden by default)
-		this.appendModeActionsEl = inputBottomEl.createEl('div', {
+		this.appendModeActionsEl = rightGroup.createEl('div', {
 			cls: 'lifewiki-append-mode-actions'
 		});
 
@@ -1197,7 +1206,7 @@ export class BlockEditorView extends ItemView {
 		});
 
 		// Arrow button on bottom-right (circular with arrow)
-		const arrowBtn = inputBottomEl.createEl('button', {
+		const arrowBtn = rightGroup.createEl('button', {
 			cls: 'lifewiki-diary-send-btn',
 			attr: { type: 'button', title: '发送日记' }
 		});
@@ -1753,8 +1762,15 @@ export class BlockEditorView extends ItemView {
 			if (aiView) {
 				aiView.setMode('analysis');
 				if ((block as ParsedBlock).category === '待分析') {
-					// Re-trigger AI analysis for unanalyzed blocks
-					await this.startAIAnalysis(block as ParsedBlock);
+					// Only re-trigger AI analysis if no session with messages exists
+					const sessionManager = this.plugin.getSessionManager();
+					const existingSession = sessionManager.getSession(block.id, null);
+					const hasHistory = existingSession && existingSession.messages && existingSession.messages.length > 0;
+					if (hasHistory) {
+						aiView.setActiveBlock(blockId, block.content);
+					} else {
+						await this.startAIAnalysis(block as ParsedBlock);
+					}
 				} else {
 					aiView.setActiveBlock(blockId, block.content);
 				}
@@ -2211,10 +2227,8 @@ export class BlockEditorView extends ItemView {
 	private async submitAppend() {
 		if (!this.isAppendMode || !this.appendModeBlockId) return;
 
-		let content = this.inputTextarea?.value.trim();
+		const content = this.inputTextarea?.value.trim();
 		if (!content) return;
-
-		content = await this.prepareContentBeforeSubmit(content);
 
 		const parentBlock = this.blocks.find(b => b.id === this.appendModeBlockId);
 		if (!parentBlock) return;
@@ -2481,115 +2495,11 @@ export class BlockEditorView extends ItemView {
 	/**
 	 * Submit a new block
 	 */
-	/**
-	 * Detect URLs in content, ask user to clip, save clippings, replace URLs with embeds.
-	 */
-	private async prepareContentBeforeSubmit(content: string): Promise<string> {
-		const urls = extractURLs(content);
-		if (urls.length === 0) return content;
-
-		if (!confirm(`检测到 ${urls.length} 个网页链接，是否抓取并保存到 Daily/webclippings？`)) {
-			return content;
-		}
-
-		let result = content;
-		let successCount = 0;
-		let failCount = 0;
-
-		for (const url of urls) {
-			const clipped = await this.clipUrlToWebClipping(url);
-			if (clipped) {
-				const embed = webClippingEmbed(clipped.path);
-				result = replaceUrlWithEmbed(result, url, embed);
-				successCount++;
-			} else {
-				failCount++;
-			}
-		}
-
-		if (failCount === 0 && successCount > 0) {
-			new Notice(`网页剪藏已保存 (${successCount} 个)`);
-		} else if (failCount > 0 && successCount > 0) {
-			new Notice(`部分网页剪藏失败 (${successCount} 成功 / ${failCount} 失败)，已保留原链接`);
-		} else if (failCount > 0 && successCount === 0) {
-			const hasWechat = urls.some(u => isWechatURL(u));
-			new Notice(hasWechat
-				? '微信文章剪藏需要安装 OpenCLI，已保留原链接'
-				: '网页剪藏失败，已保留原链接');
-		}
-
-		return result;
-	}
-
-	private async clipUrlToWebClipping(url: string): Promise<{ path: string; title: string } | null> {
-		try {
-			const today = this.currentDate;
-			const clippedAt = new Date().toISOString();
-
-			let clipResult: any = null;
-			let source: 'opencli-weixin' | 'web-clipper' = 'web-clipper';
-
-			if (isWechatURL(url)) {
-				// WeChat: OpenCLI only (renderer fetch blocked by CORS)
-				const ocResult = await clipWechatWithOpenCliToTemp(url);
-				console.log('[TraceMind] OpenCLI result:', ocResult.ok, ocResult.error || '');
-				if (ocResult.ok && ocResult.markdown) {
-					clipResult = { title: ocResult.title || '', content: ocResult.markdown, url };
-					source = 'opencli-weixin';
-					// Copy downloaded images to vault if present
-					if (ocResult.baseDir) {
-						const imagesDir = join(ocResult.baseDir, 'images');
-						if (existsSync(imagesDir)) {
-							for (const f of readdirSync(imagesDir)) {
-								const imgPath = join(imagesDir, f);
-								const vaultImgPath = `Daily/webclippings/images/${f}`;
-								await ensureParentFolder(this.app, vaultImgPath);
-								if (!this.app.vault.getAbstractFileByPath(vaultImgPath)) {
-									const buf = readFileSync(imgPath);
-									await this.app.vault.createBinary(vaultImgPath, buf);
-								}
-							}
-						}
-					}
-				}
-				// No fallback — WeChat blocks cross-origin fetch from Obsidian renderer
-			} else {
-				const webClip = await clipWebpage(url);
-				if (!webClip.error && webClip.content) {
-					clipResult = webClip;
-					source = 'web-clipper';
-				}
-			}
-
-			if (!clipResult) return null;
-
-			const doc = clippingFromClipResult(clipResult, source, clippedAt);
-			const fileName = buildWebClippingFileName({ title: doc.title, url, date: today });
-			const path = makeUniqueWebClippingPath(fileName,
-				(p: string) => this.app.vault.getAbstractFileByPath(p) !== null,
-			);
-
-			await ensureParentFolder(this.app, path);
-			const md = formatWebClippingMarkdown(doc);
-
-			const existing = this.app.vault.getAbstractFileByPath(path);
-			if (!existing) {
-				await this.app.vault.create(path, md);
-			}
-
-			return { path, title: doc.title };
-		} catch (e) {
-			console.error('[TraceMind] clipUrlToWebClipping failed:', e);
-			return null;
-		}
-	}
-
 	private async submitBlock(textarea: HTMLTextAreaElement) {
-		let content = textarea.value.trim();
+		const content = textarea.value.trim();
 		if (!content || this.isLoading) return;
 
 		this.isLoading = true;
-		content = await this.prepareContentBeforeSubmit(content);
 
 		const now = new Date();
 		const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -2680,10 +2590,8 @@ export class BlockEditorView extends ItemView {
 		// For child blocks, use parent's session
 		const effectiveParentId = (block as any).parentId || null;
 
-		// For parent blocks, check if session already has history.
-		// Skip this check for 待分析 blocks — they should always re-analyze.
-		const isUnexamined = (block as ParsedBlock).category === '待分析';
-		if (!effectiveParentId && !isUnexamined) {
+		// For parent blocks, check if session already has history
+		if (!effectiveParentId) {
 			const existingSession = sessionManager.getSession(block.id, effectiveParentId);
 			const hasHistory = existingSession && existingSession.messages && existingSession.messages.length > 0;
 
@@ -2723,34 +2631,9 @@ export class BlockEditorView extends ItemView {
 			}
 		}
 
-		// Build web clipping context from embeds in block content
-		let extraContext: string | undefined;
-		const clippingPaths = extractWebClippingEmbedPaths(block.content);
-		if (clippingPaths.length > 0) {
-			const items: Array<{ path: string; title?: string; url?: string; summary: string }> = [];
-			for (const path of clippingPaths) {
-				try {
-					const afile = this.app.vault.getAbstractFileByPath(path);
-					if (afile && 'extension' in afile) {
-						const markdown = await this.app.vault.read(afile as TFile);
-						const { title, url, summary } = summarizeWebClippingMarkdown(markdown);
-						items.push({ path, title, url, summary });
-					} else {
-						console.warn(`[TraceMind] web clipping not found: ${path}`);
-					}
-				} catch (e) {
-					console.warn(`[TraceMind] failed to read web clipping ${path}:`, (e as Error).message);
-				}
-			}
-			if (items.length > 0) {
-				extraContext = buildWebClippingContext(items);
-				console.log('[TraceMind] built web clipping context:', extraContext.substring(0, 200));
-			}
-		}
-
 		try {
 			const aiProvider = this.plugin.getAIProvider();
-			result = await aiProvider.analyzeBlock(block.content, block.id, extraContext);
+			result = await aiProvider.analyzeBlock(block.content, block.id);
 			console.log('[TraceMind] block-editor: analyzeBlock result:', result);
 			console.log('[TraceMind] block-editor: aiView exists:', !!aiView);
 

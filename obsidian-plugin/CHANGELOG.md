@@ -5,6 +5,27 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.5.8] - 2026-05-11
+
+### Added
+- **VAULT_GUIDE.md** — 外部 agent（Claude Code、Hermes 等）读写 Vault 的完整指南，涵盖日记、实体索引检索和附件
+
+### Fixed
+- **中断会话恢复** — 分析中断后重新点击 block 可继续澄清对话，不再卡住
+- **#待分析 已有会话** — 不再对已分析过的 block 重新启动分析
+
+### Changed
+- **SKILL.md → VAULT_GUIDE.md** — 重命名并重写，覆盖索引持久化后的检索方式
+
+## [1.5.7] - 2026-05-10
+
+### Changed
+- **移除网页剪藏** — 网页链接作为普通文本保存，不做检测和处理
+- **附件按钮样式优化** — 融入输入框背景色，hover 白色圆形，+ 居中，追加模式按钮右对齐
+
+### Fixed
+- **微信剪藏 CORS** — 已移除剪藏功能，不再涉及
+
 ## [1.5.6] - 2026-05-09
 
 ### Added

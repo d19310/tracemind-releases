@@ -18,7 +18,7 @@ PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
 GITHUB_REPO="d19310/tracemind-releases"
 
-DEFAULT_VERSION="v1.5.6"
+DEFAULT_VERSION="v1.5.8"
 
 # Resolve version: env var > local manifest.json > DEFAULT_VERSION
 if [[ -n "${TRACEMIND_VERSION:-}" ]]; then
