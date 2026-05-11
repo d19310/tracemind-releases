@@ -1202,6 +1202,13 @@ class SessionManagerAdapter {
       if (session.analysisResult) {
         storage.analysisResult = session.analysisResult;
       }
+      // Persist clarification progress so interrupted sessions can resume
+      if ((session as any).clarificationPhase) {
+        storage.clarificationPhase = (session as any).clarificationPhase;
+      }
+      if ((session as any).clarificationIndex != null) {
+        storage.clarificationIndex = (session as any).clarificationIndex;
+      }
       const json = JSON.stringify(storage, null, 2);
       const file = this.app.vault.getFileByPath(path);
       if (file) {

@@ -1720,6 +1720,7 @@ export class AIAnalysisPanelView extends ItemView {
 		// Start clarification if there are new entities
 		if (this.clarificationQueue.length > 0) {
 			this.clarificationPhase = 'clarifying';
+			this.saveClarificationState();
 			const firstName = '**' + this.clarificationQueue[0].name + '**';
 			await this.streamChatMessage('\u5148\u4ECE ' + firstName + ' \u5F00\u59CB\u5427\u3002');
 			setTimeout(async () => { await this.askCurrentEntityQuestion(); }, 500);
@@ -1760,6 +1761,7 @@ export class AIAnalysisPanelView extends ItemView {
 		await this.streamChatMessage('\u597D\u7684\uFF0C\u5148\u8DF3\u8FC7 **' + skipName + '**\u3002');
 		this.currentEntityIndex++;
 		this.clarificationPhase = 'clarifying';
+		this.saveClarificationState();
 		if (this.currentEntityIndex >= this.clarificationQueue.length) {
 			await this.finishClarification();
 		} else {
@@ -1877,8 +1879,29 @@ export class AIAnalysisPanelView extends ItemView {
 		this.clarificationQueue = [...newEntities].sort((a: any, b: any) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0));
 		this.knownEntities = [...archivedEntities];
 		this.allSessionEntities = [...newEntities, ...archivedEntities];
-		this.currentEntityIndex = 0;
-		this.clarificationPhase = 'clarifying';
+
+		// Restore persisted clarification state if available
+		const savedPhase = (session as any).clarificationPhase;
+		const savedIndex = (session as any).clarificationIndex;
+		if (savedPhase === 'clarifying' || savedPhase === 'review_known') {
+			this.clarificationPhase = savedPhase;
+			this.currentEntityIndex = typeof savedIndex === 'number' ? Math.min(savedIndex, this.clarificationQueue.length - 1) : 0;
+		} else {
+			this.currentEntityIndex = 0;
+			this.clarificationPhase = 'clarifying';
+		}
+	}
+
+	/** Persist current clarification position to session so it survives reloads */
+	private saveClarificationState() {
+		if (!this.activeBlockId) return;
+		const sm = this.plugin.getSessionManager();
+		const session = sm.getSession(this.activeBlockId, this.activeParentId);
+		if (session) {
+			(session as any).clarificationPhase = this.clarificationPhase;
+			(session as any).clarificationIndex = this.currentEntityIndex;
+			sm.setSession(this.activeBlockId, session, this.activeParentId);
+		}
 	}
 
 	updateAnalysis(result: AnalysisResult) {
@@ -2536,6 +2559,7 @@ export class AIAnalysisPanelView extends ItemView {
 
 				// Move to next entity naturally
 				this.currentEntityIndex++;
+				this.saveClarificationState();
 				if (this.currentEntityIndex >= this.clarificationQueue.length) {
 					await this.finishClarification();
 				} else {
