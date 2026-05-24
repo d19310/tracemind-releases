@@ -5,6 +5,27 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.0.0] - 2026-05-24
+
+### Added
+- **思考探索模式** — 从日记 block 进入沉浸式探索白板，支持历史 `.canvas` 文件再次打开。
+- **本地 Agent Runtime** — 探索模式接入 Codex、Claude Code、Hermes、OpenCode 等本地 CLI Agent。
+- **思考增强方法** — 支持破题拷问、头脑风暴、决策树、用户地图。
+- **探索白板操作** — 支持 block 连线、分组、多选移动、材料引用、记忆检索、用户回复、agent 自动回应、output block 成果总结。
+- **探索文件目录** — 使用 vault 根目录下的 `explorations/` 保存白板，`outputs/` 保存导出成果。
+- **新版品牌标识** — 更新 Obsidian 左侧入口、日记 tab 和 AI 分析 tab 图标。
+
+### Changed
+- **安装脚本** — 默认安装版本升级为 `v2.0.0`，并下载 `styles.css` / `main.css`。
+- **README** — 新增 2.0.0 安装、功能和探索模式说明。
+- **VAULT_GUIDE** — 补充探索白板目录、block 类型和本地 Agent 读写约定。
+- **实体发现流程** — AI 分析改为 mention extraction、candidate linking、用户确认和关系推断的分层流程，降低相似实体误匹配。
+
+### Fixed
+- **重复运行连线** — 同一 source block 多次运行思考方法时，agent 返回的重复 `b1/b2` id 会按 run 重映射，避免连线错连或丢失。
+- **OpenCode 输出读取** — 兼容 OpenCode stdout 为空但写入 JSON 文件的场景。
+- **探索布局** — 多次运行结果按泳道纵向排列，降低 block 重叠。
+
 ## [1.5.10] - 2026-05-11
 
 ### Fixed

@@ -1,9 +1,9 @@
 {
 	"id": "tracemind",
 	"name": "TraceMind",
-	"version": "1.5.10",
+	"version": "2.0.0",
 	"minAppVersion": "1.0.0",
-	"description": "Entity-centric AI knowledge extraction from daily journals with Context Cards",
+	"description": "Entity-centric AI journal analysis with an agent-powered exploration whiteboard",
 	"author": "d19310",
 	"authorUrl": "https://github.com/d19310",
 	"fundingUrl": "",

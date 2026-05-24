@@ -18,7 +18,7 @@ PLUGIN_ID="tracemind"
 PLUGIN_NAME="TraceMind"
 GITHUB_REPO="d19310/tracemind-releases"
 
-DEFAULT_VERSION="v1.5.10"
+DEFAULT_VERSION="v2.0.0"
 
 # Resolve version: env var > local manifest.json > DEFAULT_VERSION
 if [[ -n "${TRACEMIND_VERSION:-}" ]]; then
@@ -162,6 +162,16 @@ install_plugin() {
   if ! download_asset "manifest.json" "${PLUGIN_DIR}/manifest.json"; then
     log_error "manifest.json 下载失败"
     exit 1
+  fi
+
+  log_info "下载 styles.css ..."
+  if ! download_asset "styles.css" "${PLUGIN_DIR}/styles.css"; then
+    log_warn "styles.css 下载失败，插件仍会继续安装，但界面样式可能不完整"
+  fi
+
+  log_info "下载 main.css ..."
+  if ! download_asset "main.css" "${PLUGIN_DIR}/main.css"; then
+    log_warn "main.css 下载失败，已忽略"
   fi
 
   log_info "插件文件已安装到 $PLUGIN_DIR"
