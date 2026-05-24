@@ -31,6 +31,9 @@ fi
 
 VAULT_PATH=""
 PLUGIN_DIR=""
+DOWNLOAD_DIR=""
+CURRENT_VERSION=""
+BACKUP_DIR=""
 OPEN_AFTER_INSTALL=true
 
 log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
@@ -145,36 +148,119 @@ download_asset() {
   curl -fsSL "$url" -o "$target"
 }
 
-install_plugin() {
-  log_step "安装 TraceMind 插件"
+read_manifest_version() {
+  local manifest_path="$1"
+  if [[ ! -f "$manifest_path" ]]; then
+    return 1
+  fi
+  node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).version)" "$manifest_path" 2>/dev/null
+}
 
+detect_installed_plugin() {
   PLUGIN_DIR="${VAULT_PATH}/.obsidian/plugins/${PLUGIN_ID}"
-  mkdir -p "$PLUGIN_DIR"
+  if [[ -d "$PLUGIN_DIR" ]]; then
+    CURRENT_VERSION="$(read_manifest_version "${PLUGIN_DIR}/manifest.json" || true)"
+    if [[ -n "$CURRENT_VERSION" ]]; then
+      log_info "已安装版本: v${CURRENT_VERSION}"
+    else
+      log_warn "检测到已有 TraceMind 插件目录，但无法读取版本"
+    fi
+  fi
+}
+
+download_plugin_assets() {
+  DOWNLOAD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tracemind-install.XXXXXX")"
+  trap '[[ -n "${DOWNLOAD_DIR:-}" && -d "$DOWNLOAD_DIR" ]] && rm -rf "$DOWNLOAD_DIR"' EXIT
 
   log_info "版本: $VERSION"
+  log_info "下载到临时目录: $DOWNLOAD_DIR"
+
   log_info "下载 main.js ..."
-  if ! download_asset "main.js" "${PLUGIN_DIR}/main.js"; then
+  if ! download_asset "main.js" "${DOWNLOAD_DIR}/main.js"; then
     log_error "main.js 下载失败"
     exit 1
   fi
 
   log_info "下载 manifest.json ..."
-  if ! download_asset "manifest.json" "${PLUGIN_DIR}/manifest.json"; then
+  if ! download_asset "manifest.json" "${DOWNLOAD_DIR}/manifest.json"; then
     log_error "manifest.json 下载失败"
     exit 1
   fi
 
   log_info "下载 styles.css ..."
-  if ! download_asset "styles.css" "${PLUGIN_DIR}/styles.css"; then
+  if ! download_asset "styles.css" "${DOWNLOAD_DIR}/styles.css"; then
     log_warn "styles.css 下载失败，插件仍会继续安装，但界面样式可能不完整"
   fi
 
   log_info "下载 main.css ..."
-  if ! download_asset "main.css" "${PLUGIN_DIR}/main.css"; then
+  if ! download_asset "main.css" "${DOWNLOAD_DIR}/main.css"; then
     log_warn "main.css 下载失败，已忽略"
+  fi
+}
+
+validate_downloaded_version() {
+  local target_version="${VERSION#v}"
+  local downloaded_version
+  downloaded_version="$(read_manifest_version "${DOWNLOAD_DIR}/manifest.json" || true)"
+
+  if [[ -z "$downloaded_version" ]]; then
+    log_error "下载的 manifest.json 无法读取版本"
+    exit 1
+  fi
+
+  if [[ "$downloaded_version" != "$target_version" ]]; then
+    log_error "下载版本不匹配: 期望 ${target_version}, 实际 ${downloaded_version}"
+    exit 1
+  fi
+
+  if [[ ! -s "${DOWNLOAD_DIR}/main.js" ]]; then
+    log_error "下载的 main.js 为空"
+    exit 1
+  fi
+
+  log_info "下载校验通过: v${downloaded_version}"
+}
+
+backup_existing_plugin() {
+  if [[ ! -d "$PLUGIN_DIR" ]]; then
+    return
+  fi
+
+  BACKUP_DIR="${VAULT_PATH}/.obsidian/plugins/tracemind.backup-$(date +'%Y%m%d-%H%M%S')"
+  log_info "备份当前插件到: $BACKUP_DIR"
+  cp -R "$PLUGIN_DIR" "$BACKUP_DIR"
+}
+
+install_downloaded_plugin() {
+  mkdir -p "$PLUGIN_DIR"
+  install -m 0644 "${DOWNLOAD_DIR}/main.js" "${PLUGIN_DIR}/main.js"
+  install -m 0644 "${DOWNLOAD_DIR}/manifest.json" "${PLUGIN_DIR}/manifest.json"
+
+  if [[ -f "${DOWNLOAD_DIR}/styles.css" ]]; then
+    install -m 0644 "${DOWNLOAD_DIR}/styles.css" "${PLUGIN_DIR}/styles.css"
+  fi
+
+  if [[ -f "${DOWNLOAD_DIR}/main.css" ]]; then
+    install -m 0644 "${DOWNLOAD_DIR}/main.css" "${PLUGIN_DIR}/main.css"
   fi
 
   log_info "插件文件已安装到 $PLUGIN_DIR"
+}
+
+install_plugin() {
+  detect_installed_plugin
+  if [[ -n "$CURRENT_VERSION" ]]; then
+    log_step "升级 TraceMind 插件: v${CURRENT_VERSION} → ${VERSION}"
+  elif [[ -d "$PLUGIN_DIR" ]]; then
+    log_step "覆盖安装 TraceMind 插件: ${VERSION}"
+  else
+    log_step "安装 TraceMind 插件: ${VERSION}"
+  fi
+
+  download_plugin_assets
+  validate_downloaded_version
+  backup_existing_plugin
+  install_downloaded_plugin
 }
 
 enable_plugin() {
@@ -201,11 +287,15 @@ show_completion() {
   echo ""
   echo "Vault: $VAULT_PATH"
   echo "插件: $PLUGIN_DIR"
+  if [[ -n "$BACKUP_DIR" ]]; then
+    echo "备份: $BACKUP_DIR"
+  fi
   echo ""
   echo "下一步:"
-  echo "1. 打开 Obsidian vault"
-  echo "2. 如未自动启用：设置 → 社区插件 → TraceMind → 启用"
-  echo "3. 首次启用后按弹窗提示完成初始设置"
+  echo "1. 打开或回到 Obsidian vault"
+  echo "2. 如已打开 Obsidian，请重新加载 TraceMind 插件或重启 Obsidian"
+  echo "3. 如未自动启用：设置 → 社区插件 → TraceMind → 启用"
+  echo "4. 首次启用后按弹窗提示完成初始设置"
   echo ""
 }
 
