@@ -186,13 +186,28 @@ TraceMind 探索白板使用 Obsidian 兼容的 `.canvas` JSON 文件，并在�
 | `entity_source` | 从实体档案进入探索模式的来源 block |
 | `material_source` | 用户在白板中添加的材料、Vault 文件或网页链接引用 |
 | `frame_question` | 破题拷问生成的问题 block |
-| `insight` | 头脑风暴、用户地图等生成的洞察 block |
-| `decision` | 决策树中的决策问题或方案 block |
+| `insight` | 头脑风暴、用户地图、思维导图、RISE 等生成的洞察 block |
+| `decision` | 决策树、RISE 中的决策问题、战略判断或方案 block |
 | `risk` | 决策树、用户地图中的风险或痛点 block |
-| `experiment` | 最小验证、下一步实验 block |
+| `experiment` | 最小验证、下一步实验或 RISE execution block |
 | `user_reply` | 用户对白板 block 的回复 |
 | `agent_reply` | agent 对用户回复的回应 |
 | `output` | 成果总结 block |
+
+### 思考方法标记
+
+TraceMind 会在 block 的 `data.method`、`data.stage`、`data.level`、`data.role` 等自定义字段中记录思考方法上下文。常见值包括：
+
+| 方法 | 典型字段 |
+|------|----------|
+| `frame_problem` | `type=frame_question` |
+| `brainstorming` | `data.method=brainstorming` |
+| `mind_map` | `data.method=mind_map`, `data.level=1/2`, `data.role=branch/leaf` |
+| `decision_tree` | `data.method=decision_tree`, `data.role=decision_question/option/risk/assumption/validation` |
+| `user_map` | `data.method=user_map`, `data.role=target_user/scenario/job/pain/value` |
+| `rise` | `data.method=rise`, `data.stage=reality/insight/strategy/execution` |
+
+多个 `output` block 可以继续连接到新的 `output` block，用于更高层成果总结。读取成果链路时，应沿 `leads_to` 等边向上追溯，直到 source、material、thinking、reply 等上游 block。
 
 ### 探索模式目录
 

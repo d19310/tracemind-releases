@@ -5,6 +5,28 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.1.0] - 2026-05-25
+
+### Added
+- **思维导图** — 新增发散思考方法，支持多一级分支、多二级分支的右向树状布局。
+- **RISE 战略分析** — 新增 Reality、Insight、Strategy、Execution 分阶段战略推演流程，用户回复可自然长出多条推演路径。
+- **成果再沉淀** — 多个 output block 可继续生成更高层 output block，生成总结时会向上追溯完整思考链路。
+- **删除撤回** — 支持删除 block / edge 后通过 `Cmd/Ctrl+Z` 撤回。
+- **长内容预览** — block 内容被截断或 detail 较长时，悬浮显示详细 Markdown 预览。
+
+### Changed
+- **白板性能** — 优化 block 拖拽、edge 渲染、Markdown 解析、白板平移和滚轮缩放，降低大白板场景下的 React 重渲染压力。
+- **Action Bar** — 更多菜单按「发散思考 / 战略分析 / 产品分析 / 输出」分组，并保留常用思考方法快捷入口。
+- **Block 尺寸** — 统一 AI 生成 thinking block 尺寸，降低思考方法生成大量 block 后的拥挤感。
+- **探索布局** — 大型思维导图和重复 run 会避开白板上边界，并按泳道继续向下排列。
+
+### Fixed
+- **模式切换** — 修复从选择模式切换到平移模式后仍停留在框选状态的问题。
+- **滚轮报错** — 修复 Obsidian 控制台 `Unable to preventDefault inside passive event listener invocation` 刷屏。
+- **拖拽状态** — 修复 pointer capture 丢失后 block 可能像跟随鼠标一样延迟移动的问题。
+- **Agent JSON 容错** — 兼容思维导图、用户地图、决策树、RISE 中常见的 agent 输出字段偏差。
+- **成果生成** — 修复只选择 output block 再点击「沉淀成果」没有反应的问题。
+
 ## [2.0.0] - 2026-05-24
 
 ### Added

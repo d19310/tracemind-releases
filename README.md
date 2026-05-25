@@ -1,8 +1,6 @@
 # TraceMind
 
-本仓库是 TraceMind 的公开 release 仓库，只包含安装脚本、构建产物和使用文档，不包含完整源码。完整源码发布在私有仓库。
-
-TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅助思考结合起来。2.0.0 版本加入了「思考探索」模式：用户可以从日记 block 进入探索白板，让本地 Agent 基于选中的内容展开破题拷问、头脑风暴、决策树、用户地图等思考增强。
+TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅助思考结合起来。2.1.0 版本继续完善「思考探索」模式：用户可以从日记 block 进入探索白板，让本地 Agent 基于选中的内容展开破题拷问、头脑风暴、思维导图、决策树、用户地图、RISE 战略分析等思考增强。
 
 ## 主要功能
 
@@ -12,6 +10,14 @@ TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅�
 - 思考探索：选择一条或多条日记进入探索白板，以 block 和连线组织思考过程。
 - 本地 Agent：探索模式支持 Codex、Claude Code、Hermes、OpenCode 等本地 CLI Agent。
 - 成果输出：探索白板可生成 output block，并将总结导出到 `outputs/`。
+
+## 2.1.0 新增
+
+- 新增思维导图和 RISE 战略分析，扩展发散思考与战略分析场景。
+- 优化探索白板性能：拖拽 block、平移白板、滚轮缩放在大白板中更流畅。
+- 支持多个沉淀成果 block 再次沉淀为更高层成果，并向上追溯完整思考链路。
+- 支持删除撤回、长内容悬浮预览、嵌套成果总结等白板操作增强。
+- 修复选择/平移模式切换、滚轮 passive listener 控制台报错、block 意外拖动等交互问题。
 
 ## 2.0.0 新增
 
@@ -30,7 +36,7 @@ macOS 用户可以使用公开 release 仓库中的安装脚本：
 curl -fsSL https://raw.githubusercontent.com/d19310/tracemind-releases/main/install.sh | bash
 ```
 
-安装脚本会下载 `v2.0.0` 的 release 产物，并安装到你指定的 Obsidian vault：
+安装脚本会下载 `v2.1.0` 的 release 产物，并安装到你指定的 Obsidian vault：
 
 ```text
 {VAULT}/.obsidian/plugins/tracemind/
