@@ -1,7 +1,7 @@
 {
 	"id": "tracemind",
 	"name": "TraceMind",
-	"version": "2.1.3",
+	"version": "2.1.4",
 	"minAppVersion": "1.0.0",
 	"description": "Entity-centric AI journal analysis with an agent-powered exploration whiteboard",
 	"author": "d19310",
