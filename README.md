@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅助思考结合起来。2.1.6 版本继续完善「思考探索」能力，并修复右侧 AI 聊天模式中周报总结可能露出 action JSON 的问题。
+TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅助思考结合起来。2.1.7 版本继续完善右侧 AI 聊天模式的 action 容错，修复周报总结时可能露出残缺 `get_diary` 片段的问题。
 
 ## 主要功能
 
@@ -10,6 +10,10 @@ TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅�
 - 思考探索：选择一条或多条日记进入思考探索白板，以 block 和连线组织思考过程。
 - 本地 Agent：思考探索支持 Codex、Claude Code、Hermes、OpenCode、Pi Agent 等本地 CLI Agent。
 - 成果输出：思考探索白板可生成 output block，并将总结导出到 `outputs/`。
+
+## 2.1.7 修复
+
+- AI 聊天残缺 action 容错：当 LLM 输出 `get_diary","date":"2026-05-25"}` 这类缺少 `{"action":"` 前缀的片段时，TraceMind 会自动识别为 action 并执行，不再显示给用户。
 
 ## 2.1.6 修复
 
@@ -46,7 +50,7 @@ macOS 用户可以使用公开 release 仓库中的安装脚本：
 curl -fsSL https://raw.githubusercontent.com/d19310/tracemind-releases/main/install.sh | bash
 ```
 
-安装脚本会下载 `v2.1.6` 的 release 产物，并安装到你指定的 Obsidian vault：
+安装脚本会下载 `v2.1.7` 的 release 产物，并安装到你指定的 Obsidian vault：
 
 ```text
 {VAULT}/.obsidian/plugins/tracemind/

@@ -5,6 +5,11 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.1.7] - 2026-05-30
+
+### Fixed
+- **AI 聊天残缺 action 容错** — 修复右侧 AI 聊天模式总结周报时，LLM 输出 `get_diary","date":"YYYY-MM-DD"}` 这类缺少 `{"action":"` 前缀的残缺片段后，内容仍显示给用户且无法执行的问题。
+
 ## [2.1.6] - 2026-05-30
 
 ### Fixed
