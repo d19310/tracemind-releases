@@ -1,6 +1,6 @@
 # TraceMind Vault 读写指南
 
-本文档告诉外部 agent（Codex、Claude Code、Hermes、OpenCode 等）如何读写 TraceMind Vault，包括日记、实体档案、索引检索、附件和探索白板。
+本文档告诉外部 agent（Codex、Claude Code、Hermes、OpenCode、Pi Agent 等）如何读写 TraceMind Vault，包括日记、实体档案、索引检索、附件和思考探索白板。
 
 ## 1. Vault 目录结构
 
@@ -13,8 +13,8 @@
 ├── Person/                       # 人物实体档案
 ├── Object/                       # 客体实体档案
 ├── Theme/                        # 主题实体档案
-├── explorations/                 # TraceMind 探索白板 (.canvas)
-├── outputs/                      # 探索模式导出的 Markdown 成果
+├── explorations/                 # TraceMind 思考探索白板 (.canvas)
+├── outputs/                      # 思考探索导出的 Markdown 成果
 └── TraceMind/
     ├── PROFILE.md                # 用户档案
     ├── index/
@@ -168,7 +168,7 @@ agent 可通过路径直接读取附件和剪藏内容。
 
 ---
 
-## 7. 探索白板
+## 7. 思考探索白板
 
 ### 文件路径
 
@@ -176,14 +176,14 @@ agent 可通过路径直接读取附件和剪藏内容。
 explorations/YYYY-MM-DD-时间戳.canvas
 ```
 
-TraceMind 探索白板使用 Obsidian 兼容的 `.canvas` JSON 文件，并在文件中写入 `tracemind` 自定义元数据。外部 agent 可以读取这些文件理解探索过程，但不建议直接覆盖写入，除非明确遵守 TraceMind 的 block 与 edge schema。
+TraceMind 思考探索白板使用 Obsidian 兼容的 `.canvas` JSON 文件，并在文件中写入 `tracemind` 自定义元数据。外部 agent 可以读取这些文件理解探索过程，但不建议直接覆盖写入，除非明确遵守 TraceMind 的 block 与 edge schema。
 
 ### 主要 block 类型
 
 | 类型 | 说明 |
 |------|------|
-| `diary_source` | 从日记进入探索模式的来源 block |
-| `entity_source` | 从实体档案进入探索模式的来源 block |
+| `diary_source` | 从日记进入思考探索的来源 block |
+| `entity_source` | 从实体档案进入思考探索的来源 block |
 | `material_source` | 用户在白板中添加的材料、Vault 文件或网页链接引用 |
 | `frame_question` | 破题拷问生成的问题 block |
 | `insight` | 头脑风暴、用户地图、思维导图、RISE 等生成的洞察 block |
@@ -209,16 +209,16 @@ TraceMind 会在 block 的 `data.method`、`data.stage`、`data.level`、`data.r
 
 多个 `output` block 可以继续连接到新的 `output` block，用于更高层成果总结。读取成果链路时，应沿 `leads_to` 等边向上追溯，直到 source、material、thinking、reply 等上游 block。
 
-### 探索模式目录
+### 思考探索目录
 
 | 路径 | 说明 |
 |------|------|
-| `explorations/` | 历史探索白板，用户可从 Obsidian 文件列表再次打开 |
+| `explorations/` | 思考探索记录，用户可从 Obsidian 文件列表再次打开 |
 | `outputs/` | 用户导出的 Markdown 成果文档 |
 
 ### 记忆检索
 
-探索白板中的「检索记忆」开关启用后，TraceMind 会优先基于实体索引和 Vault 内容为思考方法补充上下文。外部 agent 在执行任务时也可以优先读取：
+思考探索白板中的「检索记忆」开关启用后，TraceMind 会优先基于实体索引和 Vault 内容为思考方法补充上下文。外部 agent 在执行任务时也可以优先读取：
 
 1. `TraceMind/index/entity-index.json`
 2. 相关 `Person/`、`Object/`、`Theme/` 档案

@@ -5,6 +5,15 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.1.6] - 2026-05-30
+
+### Fixed
+- **AI 聊天 action 容错** — 修复右侧 AI 聊天模式总结周报时，LLM 直接输出 `{"action":"get_diary"}` 裸 JSON 后不会执行且会显示给用户的问题。
+- **流式显示清理** — 聊天流式输出过程中隐藏裸 action JSON 和未完成 action JSON，避免工具调用内容闪现到对话中。
+
+### Changed
+- **跨日期总结提示** — 周报、月报等跨日期总结时，引导 LLM 一次性输出多个 `get_diary` action，再基于读取结果生成总结。
+
 ## [2.1.0] - 2026-05-25
 
 ### Added
