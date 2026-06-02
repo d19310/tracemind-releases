@@ -117,13 +117,20 @@ Daily/YYYY-MM-DD.md
 
 ### Object (按 subtype)
 
-| subtype | 关键属性 |
-|---------|---------|
-| `project` | stage, owner, deadline, stakeholders, blockers |
-| `task` | taskStatus, nextAction, dueDate, assignee |
-| `company` | relationship, roleInContext, industry |
-| `technology` | useCase, adoptionStatus, techMaturity |
-| `other` | description, objectStatus |
+| subtype | 含义 | 关键属性 |
+|---------|------|---------|
+| `project` | 项目：长期目标容器，有目标、边界、阶段或里程碑，可承载多个事项和行动任务 | stage, owner, deadline, stakeholders, blockers |
+| `matter` | 事项：需要长期记忆追踪的具体事务，比项目小，但不是短期待办 | taskStatus, nextAction, dueDate, assignee, parentProject |
+| `task` | 旧 subtype，仅用于兼容历史档案；新实体应使用 `matter` | taskStatus, nextAction, dueDate, assignee |
+| `company` | 公司、客户、供应商、合作伙伴、机构等组织 | relationship, roleInContext, industry |
+| `technology` | 技术、框架、模型、平台或方法 | useCase, adoptionStatus, techMaturity |
+| `other` | 其他客体 | description, objectStatus |
+
+`project`、`matter` 和行动看板任务的边界：
+
+- `project` 是长期目标容器，例如“TraceMind 2.0 发布”“临港算力商业化”。
+- `matter` 是需要沉淀到实体档案的长期事项，例如“行动看板任务生命周期优化”“910C 项目报价确认”。
+- 行动看板任务是短期可执行动作，例如“整理行动看板测试反馈”“让 agent 生成周报初稿”，存储在 `TraceMind/tasks/tasks.json`，不作为实体档案。
 
 ### Theme (按 subtype)
 

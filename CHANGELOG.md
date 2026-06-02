@@ -5,6 +5,26 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.2.0] - 2026-06-02
+
+### Added
+- **行动看板** — 新增主视图行动看板，把日记和 AI 对话中的行动项整理成可执行任务。
+- **任务草稿确认** — 右侧 AI 分析栏支持从当前日记、选中 block 和自然语言中生成任务草稿，用户确认后再加入行动看板。
+- **潜在任务识别** — 日记 AI 分析完成实体流程后，会保守识别明确可执行任务，并以草稿卡片提示用户确认。
+- **本地 Agent 执行任务** — 行动看板任务可指定 Codex、Claude Code、Hermes、OpenCode、Pi Agent 等本地 Agent 执行。
+- **任务成果输出** — Agent 执行结果可沉淀为 `outputs/*.md`，任务详情保留成果链接。
+- **任务日记回写** — 用户确认生成任务后，会在对应日记父 block 下追加子 block，并链接到行动看板。
+
+### Changed
+- **任务生命周期** — 行动看板采用 `待处理 / 执行中 / 待确认 / 已完成` 四列；`archived` 作为隐藏归档状态。
+- **任务详情抽屉** — 增加补充提示词、附件材料、任务进展、删除任务、归档已完成、验收确认和重新执行。
+- **Agent 进展收敛** — 任务进展只记录开始、完成、失败等基础状态，完整 Agent 输出保存在 run 记录和成果文档中。
+- **实体语义边界** — 新增 Object `matter`（事项）作为长期记忆对象；旧 `task` subtype 仅保留兼容历史档案，行动看板任务不再混入实体档案。
+
+### Fixed
+- **跳过实体总结** — 用户在实体确认中跳过的实体，不再出现在最终总结中。
+- **日记子 block 链接** — 任务生成记录中的行动看板链接可直接打开行动看板。
+
 ## [2.1.7] - 2026-05-30
 
 ### Fixed

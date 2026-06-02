@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅助思考结合起来。2.1.7 版本继续完善右侧 AI 聊天模式的 action 容错，修复周报总结时可能露出残缺 `get_diary` 片段的问题。
+TraceMind 是一个 Obsidian 插件，用于把日记、实体档案、AI 辅助思考和行动任务结合起来。2.2.0 版本新增行动看板，把日记和 AI 对话中的行动项整理成任务，并可交给本地 Agent 执行。
 
 ## 主要功能
 
@@ -10,6 +10,17 @@ TraceMind 是一个 Obsidian 插件，用于把日记、实体档案和 AI 辅�
 - 思考探索：选择一条或多条日记进入思考探索白板，以 block 和连线组织思考过程。
 - 本地 Agent：思考探索支持 Codex、Claude Code、Hermes、OpenCode、Pi Agent 等本地 CLI Agent。
 - 成果输出：思考探索白板可生成 output block，并将总结导出到 `outputs/`。
+- 行动看板：从日记或 AI 对话生成任务草稿，确认后进入看板，并可交给本地 Agent 执行。
+
+## 2.2.0 新增
+
+- 新增行动看板主视图，支持 `待处理 / 执行中 / 待确认 / 已完成` 任务生命周期。
+- 右侧 AI 分析栏可从当前日记、选中 block 或自然语言生成任务草稿，用户确认后加入行动看板。
+- 日记 AI 分析完成后可自动提示潜在行动任务，但不会未经确认写入看板。
+- 任务可指定本地 Agent 执行，并将成果保存为 `outputs/*.md`。
+- 任务详情抽屉支持补充提示词、附件材料、任务进展、验收确认、重新执行、删除和归档。
+- 确认生成任务后，会在对应日记 block 下追加子 block，并可点击链接打开行动看板。
+- 新增 Object `matter`（事项）实体 subtype，区分长期记忆事项和短期行动任务。
 
 ## 2.1.7 修复
 
@@ -50,7 +61,7 @@ macOS 用户可以使用公开 release 仓库中的安装脚本：
 curl -fsSL https://raw.githubusercontent.com/d19310/tracemind-releases/main/install.sh | bash
 ```
 
-安装脚本会下载 `v2.1.7` 的 release 产物，并安装到你指定的 Obsidian vault：
+安装脚本会下载 `v2.2.0` 的 release 产物，并安装到你指定的 Obsidian vault：
 
 ```text
 {VAULT}/.obsidian/plugins/tracemind/
@@ -89,6 +100,7 @@ TraceMind/
   index/entity-index.json
   sessions/
   insights/
+  tasks/
 explorations/
 outputs/
 ```
