@@ -5,6 +5,12 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.2.1] - 2026-06-03
+
+### Fixed
+- **Markdown 附件显示** — 日记中上传 `.md` 文档作为附件时，日记 block 只显示文档路径链接，不再展开整个 Markdown 文件内容。
+- **附件实体误识别** — AI 实体分析会忽略附件路径、vault 文件路径、本地文件路径、网页链接和 Markdown 链接，避免把文件名或链接标题误当作实体。
+
 ## [2.2.0] - 2026-06-02
 
 ### Added
