@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个 Obsidian 插件，用于把日记、实体档案、AI 辅助思考和行动任务结合起来。2.2.1 版本修复了 Markdown 附件显示和附件路径误触发实体分析的问题。
+TraceMind 是一个 Obsidian 插件，用于把日记、实体档案、AI 辅助思考和行动任务结合起来。2.2.2 版本进一步优化文档附件显示，文档类附件在日记 block 中只显示文件路径链接。
 
 ## 主要功能
 
@@ -11,6 +11,10 @@ TraceMind 是一个 Obsidian 插件，用于把日记、实体档案、AI 辅助
 - 本地 Agent：思考探索支持 Codex、Claude Code、Hermes、OpenCode、Pi Agent 等本地 CLI Agent。
 - 成果输出：思考探索白板可生成 output block，并将总结导出到 `outputs/`。
 - 行动看板：从日记或 AI 对话生成任务草稿，确认后进入看板，并可交给本地 Agent 执行。
+
+## 2.2.2 修复
+
+- 日记中上传 PDF、Word、Excel、PPT、TXT、CSV、JSON、HTML、RTF 等文档类附件时，日记 block 只显示文件路径链接，不再展开附件正文内容。
 
 ## 2.2.1 修复
 
@@ -66,7 +70,7 @@ macOS 用户可以使用公开 release 仓库中的安装脚本：
 curl -fsSL https://raw.githubusercontent.com/d19310/tracemind-releases/main/install.sh | bash
 ```
 
-安装脚本会下载 `v2.2.1` 的 release 产物，并安装到你指定的 Obsidian vault：
+安装脚本会下载 `v2.2.2` 的 release 产物，并安装到你指定的 Obsidian vault：
 
 ```text
 {VAULT}/.obsidian/plugins/tracemind/

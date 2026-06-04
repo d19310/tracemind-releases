@@ -5,6 +5,11 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.2.2] - 2026-06-04
+
+### Fixed
+- **文档附件显示** — 日记中上传 PDF、Word、Excel、PPT、TXT、CSV、JSON、HTML、RTF 等文档类附件时，日记 block 只显示文件路径链接，不再展开附件正文内容。
+
 ## [2.2.1] - 2026-06-03
 
 ### Fixed
