@@ -5,6 +5,14 @@ All notable changes to TraceMind will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [2.2.3] - 2026-10-26
+
+### Fixed
+- **自动双链递归膨胀** — 修复互动记录刷新时反复转换已有链接、导致实体档案指数膨胀及 Obsidian 白屏的问题。
+- **链接保护与匹配** — 保留已有链接、嵌入、代码和 URL；普通文字按最长实体名与别名一次匹配，避免再次处理生成的链接。连续 100 次档案读写刷新回归测试保持稳定。
+
+本版本防止继续产生此类损坏，不会自动恢复已有损坏档案。
+
 ## [2.2.2] - 2026-06-04
 
 ### Fixed
